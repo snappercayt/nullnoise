@@ -31,7 +31,6 @@ static _Atomic enum audio_state state = AUDIO_IDLE;
 static int noise_suppressor_available;
 static int recording_uses_noise_suppressor;
 static int audio_record_started;
-static int audio_track_playing;
 static char status_text[128] = "Checking microphone support";
 static char recording_path[1024];
 static char recording_name[128];
@@ -102,6 +101,24 @@ static void release_global(JNIEnv *env, jobject *object)
         (*env)->DeleteGlobalRef(env, *object);
         *object = NULL;
     }
+}
+
+static void release_noise_suppressor(JNIEnv *env)
+{
+    if (noise_suppressor == NULL) {
+        return;
+    }
+
+    jclass cls = (*env)->GetObjectClass(env, noise_suppressor);
+    if (!clear_exception(env, "NoiseSuppressor.getClass") && cls != NULL) {
+        jmethodID release = (*env)->GetMethodID(env, cls, "release", "()V");
+        if (!clear_exception(env, "NoiseSuppressor.release") && release != NULL) {
+            (*env)->CallVoidMethod(env, noise_suppressor, release);
+            clear_exception(env, "release NoiseSuppressor");
+        }
+        (*env)->DeleteLocalRef(env, cls);
+    }
+    release_global(env, &noise_suppressor);
 }
 
 static void put_u16(unsigned char *dst, uint16_t value)
@@ -260,7 +277,7 @@ static int create_audio_record(JNIEnv *env)
     (*env)->DeleteLocalRef(env, local_record);
     (*env)->DeleteLocalRef(env, cls);
     if (audio_record == NULL) {
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         recording_uses_noise_suppressor = 0;
         return 0;
     }
@@ -407,14 +424,14 @@ int audio_start_recording(JNIEnv *env)
     if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
         set_status("Could not create recording name");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
     struct tm local_time;
     if (localtime_r(&now.tv_sec, &local_time) == NULL) {
         set_status("Could not create recording name");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
 
@@ -423,7 +440,7 @@ int audio_start_recording(JNIEnv *env)
                  &local_time) == 0) {
         set_status("Could not create recording name");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
     const char *suffix =
@@ -436,7 +453,7 @@ int audio_start_recording(JNIEnv *env)
     if (path_size < 0 || (size_t)path_size >= sizeof(recording_path)) {
         set_status("Recording path is too long");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
 
@@ -449,7 +466,7 @@ int audio_start_recording(JNIEnv *env)
         }
         set_status("Could not save recording");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
 
@@ -461,7 +478,7 @@ int audio_start_recording(JNIEnv *env)
         unlink(recording_path);
         set_status("Could not allocate recording buffer");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
 
@@ -476,7 +493,7 @@ int audio_start_recording(JNIEnv *env)
         sample_array = NULL;
         set_status("Could not start microphone");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
     (*env)->CallVoidMethod(env, audio_record, start);
@@ -490,7 +507,7 @@ int audio_start_recording(JNIEnv *env)
         sample_array = NULL;
         set_status("Microphone could not start");
         release_global(env, &audio_record);
-        release_global(env, &noise_suppressor);
+        release_noise_suppressor(env);
         return 0;
     }
 
@@ -622,7 +639,6 @@ static void stop_playback(JNIEnv *env)
     playback_sample_offset = 0;
     playback_eof = 0;
     playback_samples_written = 0;
-    audio_track_playing = 0;
     state = AUDIO_IDLE;
 }
 
@@ -643,7 +659,7 @@ int audio_stop_recording(JNIEnv *env)
     }
     audio_record_started = 0;
 
-    release_global(env, &noise_suppressor);
+    release_noise_suppressor(env);
     if (audio_record != NULL) {
         jclass cls = (*env)->GetObjectClass(env, audio_record);
         jmethodID release = (*env)->GetMethodID(env, cls, "release", "()V");
@@ -780,7 +796,6 @@ static int start_playback(JNIEnv *env)
         set_status("Could not start playback");
         return 0;
     }
-    audio_track_playing = 1;
     state = AUDIO_PLAYING;
     set_status("Playing saved recording");
     return 1;

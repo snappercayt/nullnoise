@@ -2,6 +2,10 @@
 
 NullNoise is an Android voice-recording app built with C and the Android NDK. It lets you record audio, save clips locally, and apply a one-tap noise-reduction and voice-enhancement pass.
 
+> **Prototype:** The APK builds in GitHub Actions, but recording, playback, and
+> noise suppression are not yet validated on a device. Do not rely on it for
+> important recordings.
+
 ## Project goals
 
 - Make voice recording quick and reliable.
@@ -20,7 +24,7 @@ The original recording should remain unchanged when an enhanced copy is created.
 
 ## Initial scope
 
-### Current functionality
+### Implemented prototype features (device validation pending)
 
 - Request microphone access when recording is first started.
 - Record mono 48 kHz PCM audio and save it in the app's private storage.
