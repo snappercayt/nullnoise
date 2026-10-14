@@ -1,0 +1,4 @@
+/build/
+/my-release-key.keystore
+/*.keystore
+/android-*.jar

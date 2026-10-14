@@ -1,0 +1,3 @@
+[submodule "rawdrawandroid"]
+	path = third_party/rawdrawandroid
+	url = https://github.com/cnlohr/rawdrawandroid.git
