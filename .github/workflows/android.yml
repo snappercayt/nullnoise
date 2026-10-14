@@ -85,5 +85,10 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          name: NullNoise ${{ github.ref_name }} Prototype
+          body: |
+            **Prototype build for device testing.**
+
+            Recording, playback, and noise suppression have not yet been validated on physical Android devices. This debug-signed APK is not a production release.
           files: dist/nullnoise.apk
+          prerelease: true
