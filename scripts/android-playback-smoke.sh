@@ -6,7 +6,18 @@ apk=${1:?APK path required}
 package=com.snappercayt.nullnoise
 
 adb wait-for-device
-adb install -r "$apk"
+install_attempt=1
+until adb install -r "$apk"; do
+    if [[ $install_attempt -ge 3 ]]; then
+        echo "Could not install APK after $install_attempt attempts" >&2
+        adb logcat -d -s PackageManager:E AndroidRuntime:E
+        exit 1
+    fi
+    echo "APK install failed; retrying after Android package service settles" >&2
+    adb wait-for-device
+    sleep 10
+    install_attempt=$((install_attempt + 1))
+done
 adb root
 adb wait-for-device
 adb shell pm revoke "$package" android.permission.RECORD_AUDIO
