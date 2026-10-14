@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'echo "Smoke test failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 
 apk=${1:?APK path required}
 package=com.snappercayt.nullnoise
