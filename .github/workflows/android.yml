@@ -31,6 +31,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Run build-independent tests
+        run: bash scripts/test-local.sh
+
       - name: Set up Java
         uses: actions/setup-java@v6
         with:

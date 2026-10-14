@@ -20,7 +20,7 @@ RNNOISE_SOURCES := \
 	$(RNNOISE)/src/nnet_default.c \
 	$(RNNOISE)/src/parse_lpcnet_weights.c \
 	$(RNNOISE)/src/rnnoise_tables.c
-SRC := src/main.c src/audio.c $(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
+SRC := src/main.c src/audio.c src/wav.c $(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
 CFLAGS += -pthread \
 	-I$(RNNOISE)/include \
 	-I$(RNNOISE)/src \

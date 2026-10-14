@@ -104,6 +104,18 @@ The local build targets `arm64-v8a`; GitHub Actions also builds `x86_64` for
 emulator testing. The Android NDK/SDK are not vendored. Local builds are
 optional; contributors can rely on GitHub Actions for Android builds.
 
+Before using Actions minutes for an Android build, run the build-independent
+checks locally when a host C compiler and Python 3 are available:
+
+```sh
+bash scripts/test-local.sh
+```
+
+These tests cover smoke-test shell syntax, permission-dialog XML selection,
+and the portable WAV-header writer. They do not build an APK or require
+Android SDK/NDK tools. GitHub Actions runs them before setting up the Android
+build environment.
+
 GitHub Actions builds and verifies the APK on pushes to `main` and pull
 requests. Use **Actions → Android APK → Run workflow** to request an emulator
 smoke test without publishing a release. Version tags run the smoke test before

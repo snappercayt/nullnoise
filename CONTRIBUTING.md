@@ -16,13 +16,16 @@ are easiest to review. By participating, you agree to follow the
 ## Development and validation
 
 Android builds and emulator tests run in GitHub Actions; a local Android SDK or
-NDK setup is optional. From the repository root, run these lightweight checks
-for changes to the smoke-test script and before opening a pull request:
+NDK setup is optional. If you have a host C compiler and Python 3, run the
+build-independent test suite from the repository root:
 
 ```sh
-bash -n scripts/android-playback-smoke.sh
-git diff --check
+bash scripts/test-local.sh
 ```
+
+This checks shell syntax, exercises permission-dialog XML parsing, and compiles
+and runs the portable WAV-header tests. It does not build an APK or require
+Android tooling. The same checks run before Android SDK setup in GitHub Actions.
 
 The Android APK build and packaging checks run for pushes to `main` and pull
 requests. The emulator smoke test can be started manually from **Actions →
@@ -30,9 +33,9 @@ Android APK → Run workflow**; it also runs for version tags before a prototype
 release is published. A successful emulator test is not a substitute for
 physical-device audio testing.
 
-There is not yet a standalone native C unit-test target. If you add portable
-audio or file-format logic, keep it testable without Android APIs where
-practical and include focused tests or reproducible validation steps.
+If you add portable audio or file-format logic, keep it testable without
+Android APIs where practical and include focused tests or reproducible
+validation steps.
 
 ## Pull requests
 

@@ -56,30 +56,7 @@ for _ in $(seq 1 30); do
 
     adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
     hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
-    coordinates=$(
-        python3 - "$hierarchy" <<'PY'
-import re
-import sys
-import xml.etree.ElementTree as ET
-
-try:
-    root = ET.fromstring(sys.argv[1])
-except ET.ParseError:
-    raise SystemExit(1)
-
-for node in root.iter("node"):
-    label = node.attrib.get("text", "").strip().lower()
-    if label not in {"while using the app", "only this time", "allow"}:
-        continue
-    bounds = re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]", node.attrib.get("bounds", ""))
-    if bounds:
-        left, top, right, bottom = map(int, bounds.groups())
-        print((left + right) // 2, (top + bottom) // 2)
-        break
-else:
-    raise SystemExit(1)
-PY
-    ) || true
+    coordinates=$(python3 scripts/permission_dialog.py <<<"$hierarchy") || true
     if [[ -n $coordinates ]]; then
         read -r x y <<<"$coordinates"
         adb shell input tap "$x" "$y"
