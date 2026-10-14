@@ -1,0 +1,57 @@
+name: Bug report
+description: Report a reproducible problem with NullNoise.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing reports first. Never attach recordings or other private audio; describe what you heard instead.
+  - type: input
+    id: app_version
+    attributes:
+      label: App version or commit
+      placeholder: "For example, v0.1.1 or a commit SHA"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device
+      placeholder: Manufacturer and model
+    validations:
+      required: true
+  - type: input
+    id: android_version
+    attributes:
+      label: Android version
+      placeholder: Android version and API level if known
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the taps or actions that lead to the problem.
+      placeholder: |
+        1. Open NullNoise.
+        2. Tap Record...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include what happened and approximately when.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs (optional)
+      description: Remove personal data, file paths, and other sensitive information before posting.

@@ -2,9 +2,10 @@
 
 NullNoise is an Android voice-recording app built with C and the Android NDK. It lets you record audio, save clips locally, and apply a one-tap noise-reduction and voice-enhancement pass.
 
-> **Prototype:** The APK builds in GitHub Actions, but recording, playback, and
-> noise suppression are not yet validated on a device. Do not rely on it for
-> important recordings.
+> **Prototype:** On one phone, a user reported successful recording and voice
+> enhancement, but playback crashed after a few seconds. The Android emulator
+> regression test has not passed yet, so playback stability remains unverified.
+> Do not rely on NullNoise for important recordings.
 
 ## Project goals
 
@@ -24,7 +25,7 @@ The original recording should remain unchanged when an enhanced copy is created.
 
 ## Initial scope
 
-### Implemented prototype features (device validation pending)
+### Implemented prototype features (partially validated on one phone)
 
 - Request microphone access when recording is first started and begin recording
   immediately after the user grants it.
@@ -35,6 +36,10 @@ The original recording should remain unchanged when an enhanced copy is created.
 - Run RNNoise on demand with **NullNoise**, producing a separate normalized
   `_NN.wav` file while preserving the source clip.
 - Play, pause, and switch between the original and enhanced versions.
+
+Recording and enhancement have been tried on one phone. Playback crashed on
+that device after a few seconds; the emulator regression test has not yet
+validated playback.
 
 ### Not yet included
 
@@ -95,15 +100,20 @@ make
 
 The APK is written to `build/nullnoise.apk`. To install and launch it on a connected device, run `make run`. The upstream Makefile creates a local debug keystore on the first build; this key is ignored by Git and must not be used for release signing.
 
-The initial build targets `arm64-v8a`. The Android NDK/SDK are not vendored;
-build locally after installing the requirements above.
+The local build targets `arm64-v8a`; GitHub Actions also builds `x86_64` for
+emulator testing. The Android NDK/SDK are not vendored. Local builds are
+optional; contributors can rely on GitHub Actions for Android builds.
 
-GitHub Actions builds the APK on pushes to `main` and pull requests. To publish the CI-built APK as a GitHub Release, push a version tag such as `v0.1.0`. The attached APK is debug-signed for testing; it is not a production release build.
+GitHub Actions builds and verifies the APK on pushes to `main` and pull
+requests. Use **Actions → Android APK → Run workflow** to request an emulator
+smoke test without publishing a release. Version tags run the smoke test before
+publishing a GitHub pre-release. The attached APK is debug-signed for testing;
+it is not a production release build.
 
-Version-tag builds also run an Android emulator smoke test covering the
-microphone permission prompt, recording, enhancement, and playback of both
-original and enhanced audio. This catches basic runtime crashes but does not
-replace testing across physical devices and audio hardware.
+The emulator smoke test is intended to cover the microphone permission prompt,
+recording, enhancement, and playback of both original and enhanced audio. A
+passing emulator run would catch basic runtime crashes but would not replace
+testing across physical devices and audio hardware.
 
 ## Development roadmap
 
@@ -119,9 +129,15 @@ Recordings are intended to stay on-device. Do not add network upload or analytic
 
 ## Repository status
 
-The current MVP has a functional single-screen record, playback, and
-enhancement flow; broader device testing and library management remain future
-work.
+The prototype has a single-screen record, playback, and enhancement flow.
+Playback stability remains unresolved; broader device testing and library
+management are future work.
+
+## Contributing and project policies
+
+Contributions are welcome. See the [contribution guide](CONTRIBUTING.md), the
+[Code of Conduct](CODE_OF_CONDUCT.md), and the [security policy](SECURITY.md).
+Please use the GitHub issue forms for bug reports and feature requests.
 
 ## License
 
