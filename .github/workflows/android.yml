@@ -6,7 +6,17 @@ on:
       - main
     tags:
       - "v*"
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "LICENSE"
+
+concurrency:
+  group: android-build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -44,6 +54,13 @@ jobs:
 
       - name: Build APK
         run: make
+
+      - name: Verify APK contents
+        run: |
+          test -s build/nullnoise.apk
+          unzip -Z1 build/nullnoise.apk | grep -Fxq 'lib/arm64-v8a/libnullnoise.so'
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions build/nullnoise.apk \
+            | grep -Fq 'android.permission.RECORD_AUDIO'
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7

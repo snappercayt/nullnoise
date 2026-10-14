@@ -2,8 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="${PACKAGENAME}">
     <uses-sdk
-        android:minSdkVersion="${ANDROIDVERSION}"
+        android:minSdkVersion="23"
         android:targetSdkVersion="${ANDROIDTARGET}" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
     <application
         android:hasCode="false"
         android:label="${LABEL}"
