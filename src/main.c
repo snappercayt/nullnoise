@@ -313,12 +313,15 @@ int main(int argc, char **argv)
             permission_request_pending = 0;
             permission_result_ready = 0;
             int granted = microphone_permission_granted(env);
-            snprintf(permission_notice, sizeof(permission_notice), "%s",
-                     granted == 1
-                         ? "Microphone allowed - tap Record"
-                         : granted == 0
-                               ? "Microphone denied - tap Record to retry"
-                               : "Could not check microphone permission");
+            if (granted == 1) {
+                permission_notice[0] = '\0';
+                audio_start_recording(env);
+            } else {
+                snprintf(permission_notice, sizeof(permission_notice), "%s",
+                         granted == 0
+                             ? "Microphone denied - tap Record to retry"
+                             : "Could not check microphone permission");
+            }
         }
 
         short width;
@@ -326,24 +329,24 @@ int main(int argc, char **argv)
         CNFGGetDimensions(&width, &height);
         CNFGClearFrame();
         CNFGColor(0xffffffff);
-        draw_centered_text("NullNoise", 8, height * 6 / 100);
+        draw_centered_text("NullNoise", 10, height * 5 / 100);
         CNFGColor(0x9aabb8ff);
         draw_centered_text(
             audio_noise_suppressor_available()
                 ? "Android noise suppression is available"
                 : "RNNoise will reduce noise after recording",
-            4, height * 17 / 100);
+            6, height * 16 / 100);
         draw_centered_text(permission_notice[0] ? permission_notice
                                                 : audio_get_status(),
-                            4, height * 26 / 100);
+                            6, height * 25 / 100);
         draw_centered_text(audio_has_recording()
                                ? audio_get_latest_recording_name()
                                : "No recording saved yet",
-                           3, height * 35 / 100);
+                           5, height * 34 / 100);
         draw_centered_text(audio_get_playback_name()[0]
                                ? audio_get_playback_name()
                                : "Record a clip to begin",
-                           3, height * 43 / 100);
+                           5, height * 42 / 100);
 
         enum audio_state state = audio_get_state();
         draw_button(width, height, 0,

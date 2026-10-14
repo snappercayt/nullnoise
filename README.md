@@ -26,7 +26,8 @@ The original recording should remain unchanged when an enhanced copy is created.
 
 ### Implemented prototype features (device validation pending)
 
-- Request microphone access when recording is first started.
+- Request microphone access when recording is first started and begin recording
+  immediately after the user grants it.
 - Record mono 48 kHz PCM audio and save it in the app's private storage.
 - Attach Android `NoiseSuppressor` when the device reports it available.
 - Run RNNoise automatically after recording when Android noise suppression
@@ -98,6 +99,11 @@ The initial build targets `arm64-v8a`. The Android NDK/SDK are not vendored;
 build locally after installing the requirements above.
 
 GitHub Actions builds the APK on pushes to `main` and pull requests. To publish the CI-built APK as a GitHub Release, push a version tag such as `v0.1.0`. The attached APK is debug-signed for testing; it is not a production release build.
+
+Version-tag builds also run an Android emulator smoke test covering the
+microphone permission prompt, recording, enhancement, and playback of both
+original and enhanced audio. This catches basic runtime crashes but does not
+replace testing across physical devices and audio hardware.
 
 ## Development roadmap
 

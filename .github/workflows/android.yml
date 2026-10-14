@@ -53,12 +53,16 @@ jobs:
           sudo apt-get install --yes --no-install-recommends gettext-base unzip zip
 
       - name: Build APK
-        run: make
+        run: |
+          make \
+            TARGETS="build/makecapk/lib/arm64-v8a/libnullnoise.so build/makecapk/lib/x86_64/libnullnoise.so" \
+            CC_x86="$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android30-clang"
 
       - name: Verify APK contents
         run: |
           test -s build/nullnoise.apk
           unzip -Z1 build/nullnoise.apk | grep -Fxq 'lib/arm64-v8a/libnullnoise.so'
+          unzip -Z1 build/nullnoise.apk | grep -Fxq 'lib/x86_64/libnullnoise.so'
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions build/nullnoise.apk \
             | grep -Fq 'android.permission.RECORD_AUDIO'
           if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions build/nullnoise.apk \
@@ -75,9 +79,45 @@ jobs:
           path: build/nullnoise.apk
           if-no-files-found: error
 
+  emulator-smoke:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out smoke test
+        uses: actions/checkout@v7
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4.0.4
+
+      - name: Install emulator image
+        run: |
+          sdkmanager \
+            "platforms;android-30" \
+            "system-images;android-30;default;x86_64" \
+            "emulator" \
+            "platform-tools"
+
+      - name: Download APK
+        uses: actions/download-artifact@v7
+        with:
+          name: nullnoise-apk
+          path: build
+
+      - name: Exercise microphone permission and playback
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: default
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect
+          script: bash scripts/android-playback-smoke.sh build/nullnoise.apk
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: [build, emulator-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -95,6 +135,6 @@ jobs:
           body: |
             **Prototype build for device testing.**
 
-            Recording, playback, and noise suppression have not yet been validated on physical Android devices. This debug-signed APK is not a production release.
+            Android emulator smoke tests cover microphone permission, recording, enhancement, and original/enhanced playback. Real-device audio quality and vendor-specific behavior have not been validated. This debug-signed APK is not a production release.
           files: dist/nullnoise.apk
           prerelease: true
