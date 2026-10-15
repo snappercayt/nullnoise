@@ -67,7 +67,7 @@ jobs:
           if [[ "${{ inputs.diagnostic_package }}" == "true" ]]; then
             make \
               PACKAGENAME=com.snappercayt.nullnoise.diagnostic \
-              LABEL="NullNoise Diagnostic" \
+              LABEL='"NullNoise Diagnostic"' \
               TARGETS="build/makecapk/lib/arm64-v8a/libnullnoise.so build/makecapk/lib/x86_64/libnullnoise.so" \
               CC_x86="$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/x86_64-linux-android30-clang"
           else
