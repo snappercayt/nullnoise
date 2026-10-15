@@ -46,6 +46,14 @@ static void load_previous_crash_notice(JNIEnv *env)
         (*env)->DeleteLocalRef(env, context_class);
         return;
     }
+    jmethodID get_package_name =
+        (*env)->GetMethodID(env, context_class, "getPackageName",
+                            "()Ljava/lang/String;");
+    if (clear_diagnostic_exception(env, "getPackageName lookup") ||
+        get_package_name == NULL) {
+        (*env)->DeleteLocalRef(env, context_class);
+        return;
+    }
     jstring service_name = (*env)->NewStringUTF(env, "activity");
     jobject activity_manager = NULL;
     if (!clear_diagnostic_exception(env, "activity service name") &&
@@ -55,11 +63,22 @@ static void load_previous_crash_notice(JNIEnv *env)
     }
     int service_failed =
         clear_diagnostic_exception(env, "get activity service");
+    jstring package_name = (jstring)(*env)->CallObjectMethod(
+        env, gapp->activity->clazz, get_package_name);
+    int package_failed =
+        clear_diagnostic_exception(env, "get application package name");
     if (service_name != NULL) {
         (*env)->DeleteLocalRef(env, service_name);
     }
     (*env)->DeleteLocalRef(env, context_class);
-    if (service_failed || activity_manager == NULL) {
+    if (service_failed || activity_manager == NULL || package_failed ||
+        package_name == NULL) {
+        if (package_name != NULL) {
+            (*env)->DeleteLocalRef(env, package_name);
+        }
+        if (activity_manager != NULL) {
+            (*env)->DeleteLocalRef(env, activity_manager);
+        }
         return;
     }
 
@@ -67,6 +86,7 @@ static void load_previous_crash_notice(JNIEnv *env)
     if (clear_diagnostic_exception(env, "ActivityManager class") ||
         manager_class == NULL) {
         (*env)->DeleteLocalRef(env, activity_manager);
+        (*env)->DeleteLocalRef(env, package_name);
         return;
     }
     jmethodID history = (*env)->GetMethodID(
@@ -76,20 +96,13 @@ static void load_previous_crash_notice(JNIEnv *env)
         history == NULL) {
         (*env)->DeleteLocalRef(env, manager_class);
         (*env)->DeleteLocalRef(env, activity_manager);
+        (*env)->DeleteLocalRef(env, package_name);
         return;
     }
-    jstring package_name =
-        (*env)->NewStringUTF(env, "com.snappercayt.nullnoise");
-    jobject exits = NULL;
-    if (!clear_diagnostic_exception(env, "package name") &&
-        package_name != NULL) {
-        exits = (*env)->CallObjectMethod(env, activity_manager, history,
-                                         package_name, 0, 1);
-    }
+    jobject exits = (*env)->CallObjectMethod(env, activity_manager, history,
+                                             package_name, 0, 1);
     int history_failed = clear_diagnostic_exception(env, "read exit history");
-    if (package_name != NULL) {
-        (*env)->DeleteLocalRef(env, package_name);
-    }
+    (*env)->DeleteLocalRef(env, package_name);
     (*env)->DeleteLocalRef(env, manager_class);
     (*env)->DeleteLocalRef(env, activity_manager);
     if (history_failed || exits == NULL) {

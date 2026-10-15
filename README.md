@@ -129,7 +129,10 @@ testing across physical devices and audio hardware.
 
 Diagnostic builds log playback start/write/stop milestones and, on Android 11
 or newer, display the previous process exit category after an app crash when
-Android makes that information available.
+Android makes that information available. The diagnostic edition uses a
+separate app ID so it can be installed alongside the regular prototype without
+replacing its private recordings; recordings must be made again in that edition
+to reproduce an issue.
 
 ## Development roadmap
 
