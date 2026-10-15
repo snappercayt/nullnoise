@@ -16,7 +16,162 @@ static int touch_active;
 static int permission_request_pending;
 static int permission_result_ready;
 static char permission_notice[96];
+static char previous_exit_notice[160];
 static JNIEnv *app_env;
+
+static int clear_diagnostic_exception(JNIEnv *env, const char *operation)
+{
+    if (!(*env)->ExceptionCheck(env)) {
+        return 0;
+    }
+    __android_log_print(ANDROID_LOG_WARN, "NullNoise",
+                        "Previous-run diagnostics unavailable at %s",
+                        operation);
+    (*env)->ExceptionClear(env);
+    return 1;
+}
+
+static void load_previous_crash_notice(JNIEnv *env)
+{
+    jclass context_class = (*env)->FindClass(env, "android/content/Context");
+    if (clear_diagnostic_exception(env, "Context lookup") ||
+        context_class == NULL) {
+        return;
+    }
+    jmethodID get_service = (*env)->GetMethodID(
+        env, context_class, "getSystemService",
+        "(Ljava/lang/String;)Ljava/lang/Object;");
+    if (clear_diagnostic_exception(env, "getSystemService lookup") ||
+        get_service == NULL) {
+        (*env)->DeleteLocalRef(env, context_class);
+        return;
+    }
+    jstring service_name = (*env)->NewStringUTF(env, "activity");
+    jobject activity_manager = NULL;
+    if (!clear_diagnostic_exception(env, "activity service name") &&
+        service_name != NULL) {
+        activity_manager = (*env)->CallObjectMethod(
+            env, gapp->activity->clazz, get_service, service_name);
+    }
+    int service_failed =
+        clear_diagnostic_exception(env, "get activity service");
+    if (service_name != NULL) {
+        (*env)->DeleteLocalRef(env, service_name);
+    }
+    (*env)->DeleteLocalRef(env, context_class);
+    if (service_failed || activity_manager == NULL) {
+        return;
+    }
+
+    jclass manager_class = (*env)->GetObjectClass(env, activity_manager);
+    if (clear_diagnostic_exception(env, "ActivityManager class") ||
+        manager_class == NULL) {
+        (*env)->DeleteLocalRef(env, activity_manager);
+        return;
+    }
+    jmethodID history = (*env)->GetMethodID(
+        env, manager_class, "getHistoricalProcessExitReasons",
+        "(Ljava/lang/String;II)Ljava/util/List;");
+    if (clear_diagnostic_exception(env, "exit history lookup") ||
+        history == NULL) {
+        (*env)->DeleteLocalRef(env, manager_class);
+        (*env)->DeleteLocalRef(env, activity_manager);
+        return;
+    }
+    jstring package_name =
+        (*env)->NewStringUTF(env, "com.snappercayt.nullnoise");
+    jobject exits = NULL;
+    if (!clear_diagnostic_exception(env, "package name") &&
+        package_name != NULL) {
+        exits = (*env)->CallObjectMethod(env, activity_manager, history,
+                                         package_name, 0, 1);
+    }
+    int history_failed = clear_diagnostic_exception(env, "read exit history");
+    if (package_name != NULL) {
+        (*env)->DeleteLocalRef(env, package_name);
+    }
+    (*env)->DeleteLocalRef(env, manager_class);
+    (*env)->DeleteLocalRef(env, activity_manager);
+    if (history_failed || exits == NULL) {
+        return;
+    }
+
+    jclass list_class = (*env)->FindClass(env, "java/util/List");
+    if (clear_diagnostic_exception(env, "List class") ||
+        list_class == NULL) {
+        (*env)->DeleteLocalRef(env, exits);
+        return;
+    }
+    jmethodID list_size = (*env)->GetMethodID(env, list_class, "size", "()I");
+    jmethodID list_get = (*env)->GetMethodID(
+        env, list_class, "get", "(I)Ljava/lang/Object;");
+    if (clear_diagnostic_exception(env, "List methods") || list_size == NULL ||
+        list_get == NULL) {
+        (*env)->DeleteLocalRef(env, list_class);
+        (*env)->DeleteLocalRef(env, exits);
+        return;
+    }
+    jint count = (*env)->CallIntMethod(env, exits, list_size);
+    if (clear_diagnostic_exception(env, "exit history size") || count <= 0) {
+        (*env)->DeleteLocalRef(env, list_class);
+        (*env)->DeleteLocalRef(env, exits);
+        return;
+    }
+    jobject exit_info = (*env)->CallObjectMethod(env, exits, list_get, 0);
+    int exit_failed = clear_diagnostic_exception(env, "latest exit record");
+    (*env)->DeleteLocalRef(env, list_class);
+    (*env)->DeleteLocalRef(env, exits);
+    if (exit_failed || exit_info == NULL) {
+        return;
+    }
+
+    jclass exit_class = (*env)->GetObjectClass(env, exit_info);
+    if (clear_diagnostic_exception(env, "ApplicationExitInfo class") ||
+        exit_class == NULL) {
+        (*env)->DeleteLocalRef(env, exit_info);
+        return;
+    }
+    jmethodID get_reason =
+        (*env)->GetMethodID(env, exit_class, "getReason", "()I");
+    if (clear_diagnostic_exception(env, "exit reason lookup") ||
+        get_reason == NULL) {
+        (*env)->DeleteLocalRef(env, exit_class);
+        (*env)->DeleteLocalRef(env, exit_info);
+        return;
+    }
+    jint reason = (*env)->CallIntMethod(env, exit_info, get_reason);
+    int reason_failed = clear_diagnostic_exception(env, "read exit reason");
+    (*env)->DeleteLocalRef(env, exit_class);
+    (*env)->DeleteLocalRef(env, exit_info);
+    if (reason_failed) {
+        return;
+    }
+
+    const char *description = NULL;
+    switch (reason) {
+    case 2:
+        description = "terminated by signal";
+        break;
+    case 4:
+        description = "Java crash";
+        break;
+    case 5:
+        description = "native crash";
+        break;
+    case 6:
+        description = "app not responding";
+        break;
+    case 7:
+        description = "startup failure";
+        break;
+    default:
+        return;
+    }
+    snprintf(previous_exit_notice, sizeof(previous_exit_notice),
+             "Previous run ended: %s", description);
+    __android_log_print(ANDROID_LOG_WARN, "NullNoise", "%s",
+                        previous_exit_notice);
+}
 
 static int microphone_permission_granted(JNIEnv *env)
 {
@@ -294,6 +449,7 @@ int main(int argc, char **argv)
         return 1;
     }
     app_env = env;
+    load_previous_crash_notice(env);
     audio_initialize(env);
 
     while (CNFGHandleInput()) {
@@ -343,6 +499,7 @@ int main(int argc, char **argv)
                                ? audio_get_latest_recording_name()
                                : "No recording saved yet",
                            5, height * 34 / 100);
+        draw_centered_text(previous_exit_notice, 4, height * 47 / 100);
         draw_centered_text(audio_get_playback_name()[0]
                                ? audio_get_playback_name()
                                : "Record a clip to begin",

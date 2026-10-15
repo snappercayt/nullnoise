@@ -27,6 +27,7 @@
 #define TARGET_PEAK 0.89f
 #define MAX_NORMALIZE_GAIN 4.0f
 
+static int playback_first_write_logged;
 static _Atomic enum audio_state state = AUDIO_IDLE;
 static int noise_suppressor_available;
 static int recording_uses_noise_suppressor;
@@ -520,6 +521,8 @@ void audio_tick(JNIEnv *env)
                 playback_eof = feof(playback_file);
             }
             if (ferror(playback_file)) {
+                __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
+                                    "Playback file read failed");
                 set_status("Could not read saved audio");
                 return;
             }
@@ -545,8 +548,17 @@ void audio_tick(JNIEnv *env)
             int write_failed = clear_exception(env, "play audio");
             (*env)->DeleteLocalRef(env, cls);
             if (write_failed || written < 0) {
+                __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
+                                    "AudioTrack.write failed: result=%d",
+                                    written);
                 set_status("Audio playback failed");
                 return;
+            }
+            if (written > 0 && !playback_first_write_logged) {
+                __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
+                                    "First AudioTrack write succeeded: %d samples",
+                                    written);
+                playback_first_write_logged = 1;
             }
             playback_sample_offset += written;
             playback_samples_written += written;
@@ -564,6 +576,8 @@ void audio_tick(JNIEnv *env)
             }
             (*env)->DeleteLocalRef(env, cls);
             if ((uint32_t)head >= (uint32_t)playback_samples_written) {
+                __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
+                                    "Playback reached end of stream");
                 audio_stop_playback(env);
                 set_status("Playback finished");
             }
@@ -573,6 +587,9 @@ void audio_tick(JNIEnv *env)
 
 static void stop_playback(JNIEnv *env)
 {
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
+                        "Stopping playback after writing %lld samples",
+                        (long long)playback_samples_written);
     if (audio_track != NULL) {
         jclass cls = (*env)->GetObjectClass(env, audio_track);
         const char *methods[] = {"pause", "flush", "release"};
@@ -691,6 +708,8 @@ static int start_playback(JNIEnv *env)
         set_status("Could not open saved audio");
         return 0;
     }
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
+                        "Starting playback for %s", playback_name);
 
     jclass cls = find_class(env, "android/media/AudioTrack");
     if (cls == NULL) {
@@ -733,6 +752,9 @@ static int start_playback(JNIEnv *env)
         set_status("Could not initialize audio playback");
         return 0;
     }
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
+                        "AudioTrack initialized: rate=%d buffer=%d mode=stream",
+                        SAMPLE_RATE, PLAY_BUFFER_SAMPLES * 4);
     audio_track = (*env)->NewGlobalRef(env, local_track);
     (*env)->DeleteLocalRef(env, local_track);
     playback_array = (*env)->NewShortArray(env, PLAY_BUFFER_SAMPLES);
@@ -756,6 +778,9 @@ static int start_playback(JNIEnv *env)
         set_status("Could not start playback");
         return 0;
     }
+    playback_first_write_logged = 0;
+    __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
+                        "AudioTrack playback started");
     state = AUDIO_PLAYING;
     set_status("Playing saved recording");
     return 1;

@@ -127,6 +127,10 @@ recording, enhancement, and playback of both original and enhanced audio. A
 passing emulator run would catch basic runtime crashes but would not replace
 testing across physical devices and audio hardware.
 
+Diagnostic builds log playback start/write/stop milestones and, on Android 11
+or newer, display the previous process exit category after an app crash when
+Android makes that information available.
+
 ## Development roadmap
 
 1. **Device validation:** test capture, playback, NoiseSuppressor availability,
