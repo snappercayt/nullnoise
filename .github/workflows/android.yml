@@ -8,11 +8,13 @@ on:
         required: false
         default: false
         type: boolean
+      release_tag:
+        description: Publish a pre-release, for example v0.1.3 (leave blank for a CI build only)
+        required: false
+        type: string
   push:
     branches:
       - main
-    tags:
-      - "v*"
     paths-ignore:
       - "**.md"
       - "LICENSE"
@@ -104,7 +106,7 @@ jobs:
           if-no-files-found: error
 
   emulator-smoke:
-    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_package != true)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_package != true
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -140,7 +142,14 @@ jobs:
           script: bash scripts/android-playback-smoke.sh build/nullnoise.apk
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: >-
+      ${{ always() &&
+          github.event_name == 'workflow_dispatch' &&
+          inputs.release_tag != '' &&
+          needs.build.result == 'success' &&
+          (needs.emulator-smoke.result == 'success' ||
+           (inputs.diagnostic_package == true &&
+            needs.emulator-smoke.result == 'skipped')) }}
     needs: [build, emulator-smoke]
     runs-on: ubuntu-latest
     permissions:
@@ -150,15 +159,33 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           name: nullnoise-apk
-          path: dist
+          path: build
+
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          DIAGNOSTIC_PACKAGE: ${{ inputs.diagnostic_package }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Release tag must be a version such as v0.1.3"
+            exit 1
+          fi
+          suffix=""
+          if [[ "$DIAGNOSTIC_PACKAGE" == "true" ]]; then
+            suffix="-diagnostic"
+          fi
+          cp build/nullnoise.apk "NullNoise-${RELEASE_TAG}${suffix}.apk"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: NullNoise ${{ github.ref_name }} Prototype
+          tag_name: ${{ inputs.release_tag }}
+          name: NullNoise ${{ inputs.release_tag }}${{ inputs.diagnostic_package == true && ' Diagnostic' || '' }} Prototype
           body: |
             **Prototype build for device testing.**
 
-            Android emulator smoke tests cover microphone permission, recording, enhancement, and original/enhanced playback. Real-device audio quality and vendor-specific behavior have not been validated. This debug-signed APK is not a production release.
-          files: dist/nullnoise.apk
+            ${{ inputs.diagnostic_package == true && 'Diagnostic-only edition. It installs alongside the regular app with separate storage, so record a fresh clip in this edition. This build does not fix playback and did not run the emulator smoke test.' || 'Android emulator smoke tests cover microphone permission, recording, enhancement, and original/enhanced playback. Real-device audio quality and vendor-specific behavior have not been validated.' }}
+
+            This debug-signed APK is a prototype, not a production release. Recordings remain in the app’s private storage.
+          files: NullNoise-${{ inputs.release_tag }}${{ inputs.diagnostic_package == true && '-diagnostic' || '' }}.apk
           prerelease: true

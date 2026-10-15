@@ -118,9 +118,13 @@ build environment.
 
 GitHub Actions builds and verifies the APK on pushes to `main` and pull
 requests. Use **Actions → Android APK → Run workflow** to request an emulator
-smoke test without publishing a release. Version tags run the smoke test before
-publishing a GitHub pre-release. The attached APK is debug-signed for testing;
-it is not a production release build.
+smoke test without publishing a release. To publish a pre-release, enter a
+version such as `v0.1.3` in the `release_tag` input; regular builds must pass
+the emulator smoke test first. Enable `diagnostic_package` to build and publish
+the side-by-side diagnostic edition instead. Diagnostic releases skip the
+emulator smoke test and clearly identify that limitation. Creating a release
+does not trigger a redundant tag build. All attached APKs are debug-signed
+prototypes, not production release builds.
 
 The emulator smoke test is intended to cover the microphone permission prompt,
 recording, enhancement, and playback of both original and enhanced audio. A
