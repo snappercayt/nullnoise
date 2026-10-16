@@ -202,8 +202,7 @@ PY
 source_samples=$(validate_wav "$source_file" 48000) ||
     fail_test "Saved recording is not a finalized WAV with at least one second of audio"
 echo "Validated saved recording: $source_file ($source_samples samples)"
-python3 - "$source_samples" "$recording_elapsed_ms" <<'PY' ||
-    fail_test "Recorded sample count did not match elapsed capture time"
+if ! python3 - "$source_samples" "$recording_elapsed_ms" <<'PY'
 import sys
 
 samples, elapsed_ms = map(int, sys.argv[1:])
@@ -216,6 +215,9 @@ if abs(samples - expected) > tolerance:
     )
 print(f"Capture duration matches sample count: {samples} samples / {elapsed_ms} ms")
 PY
+then
+    fail_test "Recorded sample count did not match elapsed capture time"
+fi
 
 if [[ ${MINIAUDIO_CAPTURE:-0} == 1 ]]; then
     capture_errors=$(
