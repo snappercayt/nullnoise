@@ -116,6 +116,13 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4.0.4
 
+      - name: Enable KVM for the Android emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Install emulator image
         run: |
           sdkmanager \
@@ -137,6 +144,7 @@ jobs:
           target: default
           arch: x86_64
           profile: pixel_2
+          disable-linux-hw-accel: false
           disable-animations: true
           emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect
           script: bash scripts/android-playback-smoke.sh build/nullnoise.apk "$APP_PACKAGE"
