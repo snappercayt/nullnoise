@@ -165,7 +165,6 @@ jobs:
     if: >-
       ${{ always() &&
           github.event_name == 'workflow_dispatch' &&
-          inputs.miniaudio_capture != true &&
           inputs.release_tag != '' &&
           needs.build.result == 'success' &&
           needs.emulator-smoke.result == 'success' }}
@@ -203,8 +202,11 @@ jobs:
           body: |
             **Prototype build for device testing.**
 
+            ${{ inputs.miniaudio_capture == true && 'This build uses miniaudio capture with Android’s voice-recognition input preset. It does not attach the explicit Android NoiseSuppressor effect. Capture, enhancement, and playback passed the Android 15 emulator smoke test; real-device audio quality has not been validated.' || '' }}
+
             ${{ inputs.diagnostic_package == true && 'Diagnostic-only edition. It installs alongside the regular app with separate storage, so record a fresh clip in this edition. This build does not fix playback. The Android 15 emulator smoke test covers the app flow, but real-device audio behavior is not validated.' || 'The Android 15 emulator smoke test covers microphone permission, recording, enhancement, and original/enhanced playback. Real-device audio quality and vendor-specific behavior have not been validated.' }}
 
             This debug-signed APK is a prototype, not a production release. Recordings remain in the app’s private storage.
+          target_commitish: ${{ github.sha }}
           files: NullNoise-${{ inputs.release_tag }}${{ inputs.diagnostic_package == true && '-diagnostic' || '' }}.apk
           prerelease: true

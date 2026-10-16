@@ -61,9 +61,9 @@ are optional.
 
 To exercise the experimental build on the Android 15 emulator, run
 **Actions → Android APK → Run workflow**, enable **miniaudio_capture**, and
-leave `release_tag` blank. The emulator recording/enhancement smoke test runs
-against the selected capture backend. Experimental miniaudio builds cannot be
-published through this workflow.
+leave `release_tag` blank. To publish the opt-in miniaudio build as a prototype,
+enter a new version tag only after deciding to publish; the workflow publishes
+only after the APK build and emulator smoke test pass.
 
 ## Experimental miniaudio capture
 
@@ -80,9 +80,10 @@ ring buffer, and a writer thread. That preset is not equivalent to attaching
 Android's explicit `NoiseSuppressor` effect. The miniaudio path uses the `_RAW`
 filename and applies RNNoise after recording; vendor processing associated
 with the input preset may still occur. The build is intended for
-capture-continuity and device-quality comparison, not release. Use `make -B`
-when switching back to the default build because Make does not track
-compiler-flag changes.
+capture-continuity and device-quality comparison. It remains experimental;
+prototype release notes identify its preset and the lack of physical-device
+audio validation. Use `make -B` when switching back to the default build
+because Make does not track compiler-flag changes.
 
 ## Tests and CI
 
@@ -110,10 +111,13 @@ not replace physical-device testing.
 ## Publishing a prototype release
 
 In **Actions → Android APK → Run workflow**, enter a new version (for example,
-`v0.1.5`) in `release_tag`. Leave `diagnostic_package` disabled for the regular
-app. The workflow publishes the pre-release only after the APK build and
-emulator smoke test pass. Enable `diagnostic_package` only when you want the
-side-by-side diagnostic edition, which has a separate app ID and storage.
+`v0.1.6`) in `release_tag`. Leave `diagnostic_package` disabled for the regular
+app. To publish the miniaudio capture build, also enable `miniaudio_capture`;
+the release notes identify the experimental input preset and note that
+real-device audio quality has not been validated. The workflow publishes the
+pre-release only after the APK build and emulator smoke test pass. Enable
+`diagnostic_package` only when you want the side-by-side diagnostic edition,
+which has a separate app ID and storage.
 
 Published APKs are debug-signed prototypes, not production release builds.
 They are listed on the [GitHub Releases page](https://github.com/snappercayt/nullnoise/releases).
