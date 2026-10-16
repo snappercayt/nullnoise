@@ -26,9 +26,12 @@ static const Color COLOR_WARNING = {255, 191, 164, 255};
 static JNIEnv *app_env;
 static struct android_app *android_app;
 static void (*raylib_app_command)(struct android_app *, int32_t);
+static int32_t (*raylib_input_event)(struct android_app *, AInputEvent *);
 static int app_suspended;
 static int permission_request_pending;
 static int permission_result_ready;
+static int touch_pending;
+static Vector2 pending_touch_position;
 static char permission_notice[128];
 static char previous_exit_notice[160];
 
@@ -342,6 +345,19 @@ static void on_app_command(struct android_app *app, int32_t command)
     }
 }
 
+static int32_t on_input_event(struct android_app *app, AInputEvent *event)
+{
+    int32_t handled = raylib_input_event(app, event);
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION) {
+        int32_t action = AMotionEvent_getAction(event);
+        if ((action & AMOTION_EVENT_ACTION_MASK) == AMOTION_EVENT_ACTION_UP) {
+            pending_touch_position = GetMousePosition();
+            touch_pending = 1;
+        }
+    }
+    return handled;
+}
+
 static JNIEnv *attach_to_vm(JavaVM *vm, int *attached_here)
 {
     JNIEnv *env = NULL;
@@ -483,9 +499,8 @@ static void start_recording_or_request_permission(void)
     }
 }
 
-static void handle_touch(float width, float height)
+static void handle_touch(Vector2 point, float width, float height)
 {
-    Vector2 point = GetMousePosition();
     Rectangle record = record_button_bounds(width, height);
     Rectangle playback = playback_button_bounds(width, height);
     Rectangle version = version_button_bounds(width, height);
@@ -693,6 +708,19 @@ int main(int argc, char **argv)
     audio_initialize(env);
     raylib_app_command = android_app->onAppCmd;
     android_app->onAppCmd = on_app_command;
+    raylib_input_event = android_app->onInputEvent;
+    if (raylib_input_event == NULL) {
+        __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
+                            "Raylib did not initialize Android touch input");
+        stop_audio_for_background();
+        CloseWindow();
+        app_env = NULL;
+        if (attached_here) {
+            (*vm)->DetachCurrentThread(vm);
+        }
+        return 1;
+    }
+    android_app->onInputEvent = on_input_event;
     SetTargetFPS(30);
 
     while (!WindowShouldClose()) {
@@ -712,8 +740,9 @@ int main(int argc, char **argv)
                                  : "Could not check microphone permission");
                 }
             }
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-                handle_touch((float)GetScreenWidth(),
+            if (touch_pending) {
+                touch_pending = 0;
+                handle_touch(pending_touch_position, (float)GetScreenWidth(),
                              (float)GetScreenHeight());
             }
         }
