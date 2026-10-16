@@ -58,6 +58,7 @@ done
 if [[ $app_started -ne 1 ]]; then
     fail_test "NullNoise did not start"
 fi
+sleep 3
 
 screen_size=$(
     adb shell wm size |
@@ -96,6 +97,7 @@ for _ in $(seq 1 45); do
     sleep 1
 done
 if [[ $permission_button_tapped -ne 1 ]]; then
+    echo "Last accessibility hierarchy: $hierarchy" >&2
     fail_test "Could not find an allowed microphone permission choice"
 fi
 
