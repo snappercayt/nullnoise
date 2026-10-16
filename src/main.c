@@ -557,14 +557,20 @@ static void draw_screen(float width, float height)
 {
     float scale = width / 390.0f;
     enum audio_state state = audio_get_state();
+    int recording = state == AUDIO_RECORDING;
     int has_recording = audio_has_recording();
     int enhanced = playback_is_enhanced();
-    int64_t position = audio_get_playback_position_samples();
-    int64_t duration = audio_get_playback_duration_samples();
+    int64_t position = recording ? audio_get_recording_samples()
+                                 : audio_get_playback_position_samples();
+    int64_t duration = recording ? 0 : audio_get_playback_duration_samples();
     char elapsed[24];
     char total[24];
     format_playback_time(position, elapsed, sizeof(elapsed));
-    format_playback_time(duration, total, sizeof(total));
+    if (recording) {
+        snprintf(total, sizeof(total), "REC");
+    } else {
+        format_playback_time(duration, total, sizeof(total));
+    }
 
     ClearBackground(COLOR_BACKGROUND);
     DrawCircleV((Vector2){width * 0.87f, height * 0.075f}, 28.0f * scale,
@@ -721,7 +727,7 @@ int main(int argc, char **argv)
         return 1;
     }
     android_app->onInputEvent = on_input_event;
-    SetTargetFPS(30);
+    SetTargetFPS(60);
 
     while (!WindowShouldClose()) {
         if (!app_suspended) {

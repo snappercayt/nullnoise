@@ -20,6 +20,7 @@ const char *audio_get_status(void);
 const char *audio_get_latest_recording_name(void);
 const char *audio_get_playback_name(void);
 int audio_has_recording(void);
+int64_t audio_get_recording_samples(void);
 int64_t audio_get_playback_position_samples(void);
 int64_t audio_get_playback_duration_samples(void);
 int audio_start_recording(JNIEnv *env);

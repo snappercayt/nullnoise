@@ -53,6 +53,7 @@ static int playback_sample_count;
 static int playback_sample_offset;
 static int playback_eof;
 static int64_t playback_samples_written;
+static int64_t recording_samples_written;
 static int64_t playback_position_samples;
 static int64_t playback_duration_samples;
 static jmethodID playback_head_method;
@@ -391,6 +392,11 @@ int64_t audio_get_playback_position_samples(void)
     return playback_position_samples;
 }
 
+int64_t audio_get_recording_samples(void)
+{
+    return recording_samples_written;
+}
+
 int64_t audio_get_playback_duration_samples(void)
 {
     return playback_duration_samples;
@@ -499,6 +505,7 @@ int audio_start_recording(JNIEnv *env)
     }
 
     audio_record_started = 1;
+    recording_samples_written = 0;
     state = AUDIO_RECORDING;
     set_status(recording_uses_noise_suppressor
                    ? "Recording with Android noise suppression"
@@ -535,6 +542,7 @@ void audio_tick(JNIEnv *env)
                 set_status("Could not write recording; tap Stop to save");
                 return;
             }
+            recording_samples_written += count;
         }
     } else if (state == AUDIO_PLAYING && audio_track != NULL &&
                playback_file != NULL) {
