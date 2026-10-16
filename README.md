@@ -24,9 +24,7 @@ NullNoise is an Android voice-recording app built with C and the Android NDK. It
 
 The original recording should remain unchanged when an enhanced copy is created.
 
-## Initial scope
-
-### Implemented prototype features (partially validated on one phone)
+## Features
 
 - Request microphone access when recording is first started and begin recording
   immediately after the user grants it.
@@ -42,33 +40,18 @@ The original recording should remain unchanged when an enhanced copy is created.
 - Use raylib for the C-rendered recording/player screen, touch input, and
   Android NativeActivity lifecycle.
 
-Recording and enhancement have been tried on one phone. Playback crashed on
-that device after a few seconds. The Android 15 emulator regression test now
-covers the end-to-end recording, save, enhancement, and native playback flow;
-passing on the emulator does not establish stability across physical devices.
+## Technical overview
 
-### Not yet included
+NullNoise is an Android NativeActivity written in C. It uses
+[raylib](https://github.com/raysan5/raylib) for rendering and touch input, and
+[rawdrawandroid](https://github.com/cnlohr/rawdrawandroid) for NativeActivity
+glue and APK packaging. Audio capture and playback use Android's native audio
+APIs; enhancement uses Android `NoiseSuppressor` when available and RNNoise
+otherwise. The app targets Android API 35 and compiles native code against API
+30.
 
-- A recordings browser, rename/delete actions, export/share, and quality
-  controls.
-- Physical-device validation across Android vendors and microphone routes.
-
-## Technical direction
-
-- **Platform:** Android
-- **App framework:** [raylib](https://github.com/raysan5/raylib), pinned as a
-  Git submodule and used for Android rendering, touch input, and NativeActivity
-  lifecycle. [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid)
-  supplies NativeActivity glue and APK packaging.
-- **Languages:** C for the native Android activity, app shell, and audio engine.
-- **Build:** GNU Make and the Android NDK, with NullNoise-specific app/package names and manifest.
-- **Audio pipeline:** Capture mono 48 kHz PCM, use Android `NoiseSuppressor`
-  when available, and retain a separate RNNoise-enhanced output.
-- **Interface:** C-rendered with raylib, including a playback timeline and
-  prominent recording, playback, version, and enhancement controls. As a
-  custom NativeActivity canvas, it does not currently expose semantic controls
-  to TalkBack; full screen-reader support needs native accessibility
-  integration. Raylib's license is included in `third_party/raylib/LICENSE`.
+The custom raylib canvas does not currently expose semantic controls to
+TalkBack; full screen-reader support needs native accessibility integration.
 
 If Android noise suppression cannot be attached to the microphone session,
 recording is saved with the `_RAW.wav` suffix and RNNoise runs after stop.
@@ -76,102 +59,24 @@ Otherwise, recordings use `_NS.wav`. Tapping **NullNoise** creates a paired
 `_NN.wav` file. Files remain in the app's internal files directory and are not
 exported automatically.
 
-## Initial Android setup
-
-The app uses raylib's Android NativeActivity and GLES rendering backend, with
-rawdrawandroid's glue and APK packaging. Runtime microphone permission is
-requested before recording. The manifest supports Android 6.0 (API 23) and
-targets API 35; native code is compiled against API 30.
-The first build downloads the RNNoise model published for the pinned RNNoise
-submodule and verifies it against RNNoise's `model_version` SHA-256 before
-extracting the generated C model into the ignored `build/` directory.
-
-### Requirements
-
-- GNU Make, Git, `curl`, `sha256sum`, `zip`, `unzip`, and `envsubst`
-- Java 17 or newer
-- Android SDK Platform 30 and Build Tools 35.0.0
-- Android NDK (side-by-side)
-- `adb` to install and launch on a connected, USB-debugging-enabled device
-
-Install Android Studio or the Android command-line tools, accept the SDK licenses, and set `ANDROID_HOME` (or `ANDROID_SDK_ROOT`) to your SDK directory. For example, with command-line tools installed:
-
-```sh
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses
-"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
-  "platforms;android-30" \
-  "build-tools;35.0.0" \
-  "ndk;27.2.12479018" \
-  "platform-tools"
-```
-
-Clone the project with its framework and nested dependencies, then build:
-
-```sh
-git clone --recurse-submodules https://github.com/snappercayt/nullnoise.git
-cd nullnoise
-make
-```
-
-The APK is written to `build/nullnoise.apk`. To install and launch it on a connected device, run `make run`. The upstream Makefile creates a local debug keystore on the first build; this key is ignored by Git and must not be used for release signing.
-
-The local build targets `arm64-v8a`; GitHub Actions also builds `x86_64` for
-emulator testing. The Android NDK/SDK are not vendored. Local builds are
-optional; contributors can rely on GitHub Actions for Android builds.
-
-Before using Actions minutes for an Android build, run the build-independent
-checks locally when a host C compiler and Python 3 are available:
-
-```sh
-bash scripts/test-local.sh
-```
-
-These tests cover smoke-test shell syntax, permission-dialog XML selection,
-and the portable WAV-header writer. They do not build an APK or require
-Android SDK/NDK tools. GitHub Actions runs them before setting up the Android
-build environment.
-
-GitHub Actions builds and verifies the APK on pushes to `main` and pull
-requests. Use **Actions → Android APK → Run workflow** to request an emulator
-smoke test without publishing a release. This test runs on an Android 15
-emulator for either app package. It clears app data, exercises the microphone
-permission prompt, records and saves a clip, validates the finalized WAV,
-waits for enhancement, then plays both enhanced and original audio through
-`AudioTrack`. To publish a pre-release, enter a version such as `v0.1.4` in
-the `release_tag` input; the build and emulator smoke test must pass first.
-Enable `diagnostic_package` to build and publish the side-by-side diagnostic
-edition instead. Creating a release does not trigger a redundant tag build.
-All attached APKs are debug-signed prototypes, not production release builds.
-
-The emulator smoke test covers the microphone permission prompt, recording,
-WAV finalization, enhancement, and playback of both original and enhanced
-audio. A passing emulator run can catch basic runtime crashes but does not
-replace testing across physical devices and audio hardware.
-
-Diagnostic builds log playback start/write/stop milestones and, on Android 11
-or newer, display the previous process exit category after an app crash when
-Android makes that information available. The diagnostic edition uses a
-separate app ID so it can be installed alongside the regular prototype without
-replacing its private recordings; recordings must be made again in that edition
-to reproduce an issue.
-
-## Development roadmap
-
-1. **Device validation:** test capture, playback, NoiseSuppressor availability,
-   and RNNoise output on physical Android devices.
-2. **Library UX:** add a recordings list and safe rename/delete/export actions.
-3. **Audio quality:** evaluate output quality and latency; expose controls only
-   after listening tests.
-
 ## Privacy
 
 Recordings are intended to stay on-device. Do not add network upload or analytics involving audio without an explicit product decision and clear user disclosure.
 
 ## Repository status
 
-The prototype has a single-screen record, playback, and enhancement flow.
-Playback stability remains unresolved; broader device testing and library
-management are future work.
+NullNoise is a prototype with a single-screen record, playback, and
+enhancement flow. The end-to-end flow passes on an Android 15 emulator.
+Playback previously crashed on one physical phone and remains unverified on
+that device; do not rely on NullNoise for important recordings.
+
+### Releases
+
+Browse the [NullNoise GitHub Releases](https://github.com/snappercayt/nullnoise/releases)
+page for published APKs and release notes. New releases appear there
+automatically. For non-release builds, see the [Android workflow runs](https://github.com/snappercayt/nullnoise/actions/workflows/android.yml);
+their APK artifacts are temporary and are not published releases. APKs are
+debug-signed prototypes, not production builds.
 
 ## Contributing and project policies
 
