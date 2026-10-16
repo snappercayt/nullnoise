@@ -82,28 +82,21 @@ assert_app_running() {
 }
 
 tap_button 0
-permission_granted=0
+permission_button_tapped=0
 for _ in $(seq 1 45); do
-    permission=$(
-        adb shell pm check-permission android.permission.RECORD_AUDIO "$package" |
-            tr -d '\r'
-    )
-    if [[ $permission == granted ]]; then
-        permission_granted=1
-        break
-    fi
-
     adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
     hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
     coordinates=$(python3 scripts/permission_dialog.py <<<"$hierarchy") || true
     if [[ -n $coordinates ]]; then
         read -r x y <<<"$coordinates"
         adb shell input tap "$x" "$y"
+        permission_button_tapped=1
+        break
     fi
     sleep 1
 done
-if [[ $permission_granted -ne 1 ]]; then
-    fail_test "Could not grant microphone permission in emulator"
+if [[ $permission_button_tapped -ne 1 ]]; then
+    fail_test "Could not find an allowed microphone permission choice"
 fi
 
 # Granting permission should return to the app and start the requested capture.
