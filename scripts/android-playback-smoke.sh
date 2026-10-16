@@ -85,7 +85,7 @@ tap_button 0
 permission_granted=0
 for _ in $(seq 1 45); do
     permission=$(
-        adb shell pm check-permission "$package" android.permission.RECORD_AUDIO |
+        adb shell pm check-permission android.permission.RECORD_AUDIO "$package" |
             tr -d '\r'
     )
     if [[ $permission == granted ]]; then
