@@ -106,7 +106,7 @@ jobs:
           if-no-files-found: error
 
   emulator-smoke:
-    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_package != true
+    if: github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -119,8 +119,8 @@ jobs:
       - name: Install emulator image
         run: |
           sdkmanager \
-            "platforms;android-30" \
-            "system-images;android-30;default;x86_64" \
+            "platforms;android-35" \
+            "system-images;android-35;default;x86_64" \
             "emulator" \
             "platform-tools"
 
@@ -133,13 +133,15 @@ jobs:
       - name: Exercise microphone permission and playback
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
+          api-level: 35
           target: default
           arch: x86_64
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -no-boot-anim -gpu swiftshader_indirect
-          script: bash scripts/android-playback-smoke.sh build/nullnoise.apk
+          script: bash scripts/android-playback-smoke.sh build/nullnoise.apk "$APP_PACKAGE"
+        env:
+          APP_PACKAGE: ${{ inputs.diagnostic_package == true && 'com.snappercayt.nullnoise.diagnostic' || 'com.snappercayt.nullnoise' }}
 
   release:
     if: >-
@@ -147,9 +149,7 @@ jobs:
           github.event_name == 'workflow_dispatch' &&
           inputs.release_tag != '' &&
           needs.build.result == 'success' &&
-          (needs.emulator-smoke.result == 'success' ||
-           (inputs.diagnostic_package == true &&
-            needs.emulator-smoke.result == 'skipped')) }}
+          needs.emulator-smoke.result == 'success' }}
     needs: [build, emulator-smoke]
     runs-on: ubuntu-latest
     permissions:
@@ -184,7 +184,7 @@ jobs:
           body: |
             **Prototype build for device testing.**
 
-            ${{ inputs.diagnostic_package == true && 'Diagnostic-only edition. It installs alongside the regular app with separate storage, so record a fresh clip in this edition. This build does not fix playback and did not run the emulator smoke test.' || 'Android emulator smoke tests cover microphone permission, recording, enhancement, and original/enhanced playback. Real-device audio quality and vendor-specific behavior have not been validated.' }}
+            ${{ inputs.diagnostic_package == true && 'Diagnostic-only edition. It installs alongside the regular app with separate storage, so record a fresh clip in this edition. This build does not fix playback. The Android 15 emulator smoke test covers the app flow, but real-device audio behavior is not validated.' || 'The Android 15 emulator smoke test covers microphone permission, recording, enhancement, and original/enhanced playback. Real-device audio quality and vendor-specific behavior have not been validated.' }}
 
             This debug-signed APK is a prototype, not a production release. Recordings remain in the app’s private storage.
           files: NullNoise-${{ inputs.release_tag }}${{ inputs.diagnostic_package == true && '-diagnostic' || '' }}.apk
