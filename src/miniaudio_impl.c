@@ -1,2 +1,2 @@
 #define MINIAUDIO_IMPLEMENTATION
-#include "miniaudio.h"
+#include "../third_party/raylib/src/external/miniaudio.h"

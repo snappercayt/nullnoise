@@ -9,7 +9,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "miniaudio.h"
+#include "../third_party/raylib/src/external/miniaudio.h"
 
 #define CAPTURE_SAMPLE_RATE 48000
 #define CAPTURE_CHANNELS 1

@@ -31,7 +31,6 @@ SRC := src/main.c src/audio.c src/wav.c $(RAYLIB_SOURCES) \
 	$(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
 ifeq ($(MINIAUDIO_CAPTURE),1)
 SRC += src/audio_capture.c src/miniaudio_impl.c
-CFLAGS += -I$(RAYLIB)/src/external
 endif
 CFLAGS += -pthread \
 	-DPLATFORM_ANDROID \
