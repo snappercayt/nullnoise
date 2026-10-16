@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 ALLOWED_LABELS = {"while using the app", "only this time", "allow"}
 
 
-def permission_button_center(hierarchy):
+def button_center(hierarchy, allowed_labels):
     try:
         root = ET.fromstring(hierarchy)
     except ET.ParseError:
@@ -15,7 +15,7 @@ def permission_button_center(hierarchy):
 
     for node in root.iter("node"):
         label = node.attrib.get("text", "").strip().lower()
-        if label not in ALLOWED_LABELS:
+        if label not in allowed_labels:
             continue
 
         bounds = re.fullmatch(
@@ -28,8 +28,13 @@ def permission_button_center(hierarchy):
     return None
 
 
+def permission_button_center(hierarchy):
+    return button_center(hierarchy, ALLOWED_LABELS)
+
+
 if __name__ == "__main__":
-    coordinates = permission_button_center(sys.stdin.read())
+    labels = {label.lower() for label in sys.argv[1:]} or ALLOWED_LABELS
+    coordinates = button_center(sys.stdin.read(), labels)
     if coordinates is None:
         raise SystemExit(1)
     print(*coordinates)

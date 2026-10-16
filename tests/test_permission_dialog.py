@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "scripts"))
 
-from permission_dialog import permission_button_center
+from permission_dialog import button_center, permission_button_center
 
 
 class PermissionDialogTests(unittest.TestCase):
@@ -23,6 +23,13 @@ class PermissionDialogTests(unittest.TestCase):
             'bounds="[11,21][32,42]" /></hierarchy>'
         )
         self.assertEqual(permission_button_center(hierarchy), (21, 31))
+
+    def test_finds_a_requested_system_dialog_button(self):
+        hierarchy = (
+            '<hierarchy><node text="Got it" bounds="[835,436][1017,562]" />'
+            "</hierarchy>"
+        )
+        self.assertEqual(button_center(hierarchy, {"got it"}), (926, 499))
 
     def test_ignores_unrecognized_or_malformed_bounds(self):
         hierarchy = """

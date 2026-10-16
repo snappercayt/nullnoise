@@ -59,6 +59,14 @@ if [[ $app_started -ne 1 ]]; then
     fail_test "NullNoise did not start"
 fi
 sleep 3
+adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
+hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
+coordinates=$(python3 scripts/permission_dialog.py "got it" <<<"$hierarchy") || true
+if [[ -n $coordinates ]]; then
+    read -r x y <<<"$coordinates"
+    adb shell input tap "$x" "$y"
+    sleep 1
+fi
 
 screen_size=$(
     adb shell wm size |
