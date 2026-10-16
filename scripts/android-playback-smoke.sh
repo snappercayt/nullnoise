@@ -121,9 +121,12 @@ if [[ $permission_button_tapped -ne 1 ]]; then
 fi
 
 # Granting permission should return to the app and start the requested capture.
+recording_started_ns=$(date +%s%N)
 sleep 3
 assert_app_running "permission result and recording"
 tap_button 0
+recording_stopped_ns=$(date +%s%N)
+recording_elapsed_ms=$(((recording_stopped_ns - recording_started_ns) / 1000000))
 
 files=/data/user/0/$package/files
 source_file=
@@ -199,6 +202,31 @@ PY
 source_samples=$(validate_wav "$source_file" 48000) ||
     fail_test "Saved recording is not a finalized WAV with at least one second of audio"
 echo "Validated saved recording: $source_file ($source_samples samples)"
+python3 - "$source_samples" "$recording_elapsed_ms" <<'PY' ||
+    fail_test "Recorded sample count did not match elapsed capture time"
+import sys
+
+samples, elapsed_ms = map(int, sys.argv[1:])
+expected = elapsed_ms * 48
+tolerance = max(expected // 5, 4800)
+if abs(samples - expected) > tolerance:
+    raise SystemExit(
+        f"Captured {samples} samples in {elapsed_ms} ms; "
+        f"expected about {expected} (tolerance {tolerance})"
+    )
+print(f"Capture duration matches sample count: {samples} samples / {elapsed_ms} ms")
+PY
+
+if [[ ${MINIAUDIO_CAPTURE:-0} == 1 ]]; then
+    capture_errors=$(
+        adb logcat -d -v brief -s NullNoise:E |
+            grep -E 'Miniaudio (capture|PCM queue|writer)' || true
+    )
+    if [[ -n $capture_errors ]]; then
+        printf '%s\n' "$capture_errors" >&2
+        fail_test "Miniaudio reported capture, queue, or writer errors"
+    fi
+fi
 
 # RNNoise may start automatically after recording. If Android noise suppression
 # was used, start enhancement explicitly; otherwise give automatic processing
