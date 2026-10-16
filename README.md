@@ -3,9 +3,10 @@
 NullNoise is an Android voice-recording app built with C and the Android NDK. It lets you record audio, save clips locally, and apply a one-tap noise-reduction and voice-enhancement pass.
 
 > **Prototype:** On one phone, a user reported successful recording and voice
-> enhancement, but playback crashed after a few seconds. The Android emulator
-> regression test has not passed yet, so playback stability remains unverified.
-> Do not rely on NullNoise for important recordings.
+> enhancement, but playback crashed after a few seconds. The full recording,
+> enhancement, and playback flow passed on an Android 15 emulator; playback on
+> that physical phone remains unresolved. Do not rely on NullNoise for
+> important recordings.
 
 ## Project goals
 
@@ -36,10 +37,15 @@ The original recording should remain unchanged when an enhanced copy is created.
 - Run RNNoise on demand with **NullNoise**, producing a separate normalized
   `_NN.wav` file while preserving the source clip.
 - Play, pause, and switch between the original and enhanced versions.
+- Show a playback timeline driven by Android `AudioTrack` playback-head
+  position, with elapsed and total time.
+- Use raylib for the C-rendered recording/player screen, touch input, and
+  Android NativeActivity lifecycle.
 
 Recording and enhancement have been tried on one phone. Playback crashed on
-that device after a few seconds; the emulator regression test has not yet
-validated playback.
+that device after a few seconds. The Android 15 emulator regression test now
+covers the end-to-end recording, save, enhancement, and native playback flow;
+passing on the emulator does not establish stability across physical devices.
 
 ### Not yet included
 
@@ -50,11 +56,19 @@ validated playback.
 ## Technical direction
 
 - **Platform:** Android
-- **App framework:** [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid), included as a pinned recursive Git submodule.
+- **App framework:** [raylib](https://github.com/raysan5/raylib), pinned as a
+  Git submodule and used for Android rendering, touch input, and NativeActivity
+  lifecycle. [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid)
+  supplies NativeActivity glue and APK packaging.
 - **Languages:** C for the native Android activity, app shell, and audio engine.
-- **Build:** rawdrawandroid's GNU Make-based Android NDK build, with NullNoise-specific app/package names and manifest.
+- **Build:** GNU Make and the Android NDK, with NullNoise-specific app/package names and manifest.
 - **Audio pipeline:** Capture mono 48 kHz PCM, use Android `NoiseSuppressor`
   when available, and retain a separate RNNoise-enhanced output.
+- **Interface:** C-rendered with raylib, including a playback timeline and
+  prominent recording, playback, version, and enhancement controls. As a
+  custom NativeActivity canvas, it does not currently expose semantic controls
+  to TalkBack; full screen-reader support needs native accessibility
+  integration. Raylib's license is included in `third_party/raylib/LICENSE`.
 
 If Android noise suppression cannot be attached to the microphone session,
 recording is saved with the `_RAW.wav` suffix and RNNoise runs after stop.
@@ -64,9 +78,10 @@ exported automatically.
 
 ## Initial Android setup
 
-The app uses rawdrawandroid's NativeActivity and GLES rendering path. Runtime
-microphone permission is requested before recording. The manifest supports
-Android 6.0 (API 23) and targets API 35; native code is compiled against API 30.
+The app uses raylib's Android NativeActivity and GLES rendering backend, with
+rawdrawandroid's glue and APK packaging. Runtime microphone permission is
+requested before recording. The manifest supports Android 6.0 (API 23) and
+targets API 35; native code is compiled against API 30.
 The first build downloads the RNNoise model published for the pinned RNNoise
 submodule and verifies it against RNNoise's `model_version` SHA-256 before
 extracting the generated C model into the ignored `build/` directory.
@@ -170,7 +185,13 @@ NullNoise is licensed under the [MIT License](LICENSE).
 
 ## Inspiration and credits
 
-NullNoise is inspired by and will use [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid), created by [CNLohr](https://github.com/cnlohr), as the foundation for its C-based Android app. rawdrawandroid is MIT-licensed. Any upstream code incorporated into NullNoise will retain its required copyright and license notices.
+NullNoise uses [raylib](https://github.com/raysan5/raylib), created by
+Ramon Santamaria, for its C-based Android rendering and NativeActivity
+integration. Raylib's zlib/libpng license is included in
+`third_party/raylib/LICENSE`. [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid),
+created by [CNLohr](https://github.com/cnlohr), supplies NativeActivity glue
+and APK packaging and is MIT-licensed. Upstream copyright and license notices
+are retained in their submodules.
 
 Noise reduction uses [RNNoise](https://github.com/xiph/rnnoise), which is
 distributed under the BSD 3-Clause License. Its license and copyright notices

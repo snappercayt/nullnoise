@@ -80,8 +80,19 @@ if [[ ! $screen_width =~ ^[0-9]+$ || ! $screen_height =~ ^[0-9]+$ ]]; then
 fi
 tap_button() {
     local index=$1
-    local y=$((screen_height * (565 + index * 110) / 1000))
-    adb shell input tap "$((screen_width / 2))" "$y"
+    local x_percent y_percent
+    case $index in
+        0) x_percent=50; y_percent=66 ;;
+        1) x_percent=50; y_percent=54 ;;
+        2) x_percent=26; y_percent=78 ;;
+        3) x_percent=74; y_percent=78 ;;
+        *)
+            echo "Unknown smoke-test button index: $index" >&2
+            return 2
+            ;;
+    esac
+    adb shell input tap "$((screen_width * x_percent / 100))" \
+        "$((screen_height * y_percent / 100))"
 }
 
 assert_app_running() {

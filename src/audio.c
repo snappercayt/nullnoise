@@ -15,7 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "CNFGAndroid.h"
+#include "android_app.h"
 #include "rnnoise.h"
 #include "wav.h"
 
@@ -53,6 +53,9 @@ static int playback_sample_count;
 static int playback_sample_offset;
 static int playback_eof;
 static int64_t playback_samples_written;
+static int64_t playback_position_samples;
+static int64_t playback_duration_samples;
+static jmethodID playback_head_method;
 static pthread_t enhancement_thread;
 static pthread_mutex_t enhancement_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char enhancement_status[128];
@@ -60,6 +63,7 @@ static char status_snapshot[128];
 static char name_snapshot[128];
 
 static int make_enhanced_path(void);
+static void stop_playback(JNIEnv *env);
 
 static void set_status(const char *text)
 {
@@ -273,7 +277,7 @@ void audio_initialize(JNIEnv *env)
         (*env)->DeleteLocalRef(env, cls);
     }
 
-    const char *directory = gapp->activity->internalDataPath;
+    const char *directory = GetAndroidApp()->activity->internalDataPath;
     DIR *dir = opendir(directory);
     if (dir == NULL) {
         __android_log_print(ANDROID_LOG_ERROR, LOG_TAG,
@@ -318,6 +322,18 @@ void audio_initialize(JNIEnv *env)
             snprintf(playback_path, sizeof(playback_path), "%s", enhanced_path);
             snprintf(playback_name, sizeof(playback_name), "%s", enhanced_name);
             pthread_mutex_unlock(&enhancement_mutex);
+        }
+        FILE *selected_file = fopen(playback_path, "rb");
+        if (selected_file != NULL) {
+            if (fseek(selected_file, 0, SEEK_END) == 0) {
+                long size = ftell(selected_file);
+                if (size >= WAV_HEADER_SIZE &&
+                    (size - WAV_HEADER_SIZE) % sizeof(int16_t) == 0) {
+                    playback_duration_samples =
+                        (size - WAV_HEADER_SIZE) / sizeof(int16_t);
+                }
+            }
+            fclose(selected_file);
         }
     }
 }
@@ -370,6 +386,16 @@ int audio_has_recording(void)
     return original_path[0] != '\0';
 }
 
+int64_t audio_get_playback_position_samples(void)
+{
+    return playback_position_samples;
+}
+
+int64_t audio_get_playback_duration_samples(void)
+{
+    return playback_duration_samples;
+}
+
 int audio_start_recording(JNIEnv *env)
 {
     if (state != AUDIO_IDLE) {
@@ -409,7 +435,7 @@ int audio_start_recording(JNIEnv *env)
     snprintf(recording_name, sizeof(recording_name), "%s_%03ld%s", base_name,
              now.tv_nsec / 1000000, suffix);
     int path_size = snprintf(recording_path, sizeof(recording_path), "%s/%s",
-                              gapp->activity->internalDataPath,
+                              GetAndroidApp()->activity->internalDataPath,
                               recording_name);
     if (path_size < 0 || (size_t)path_size >= sizeof(recording_path)) {
         set_status("Recording path is too long");
@@ -512,6 +538,17 @@ void audio_tick(JNIEnv *env)
         }
     } else if (state == AUDIO_PLAYING && audio_track != NULL &&
                playback_file != NULL) {
+        jint head = (*env)->CallIntMethod(env, audio_track,
+                                          playback_head_method);
+        if (clear_exception(env, "read playback head position")) {
+            audio_stop_playback(env);
+            set_status("Could not read playback position");
+            return;
+        }
+        playback_position_samples = (uint32_t)head;
+        if (playback_position_samples > playback_duration_samples) {
+            playback_position_samples = playback_duration_samples;
+        }
         if (playback_sample_offset == playback_sample_count && !playback_eof) {
             playback_sample_count = (int)fread(
                 playback_samples, sizeof(playback_samples[0]),
@@ -565,20 +602,11 @@ void audio_tick(JNIEnv *env)
         }
 
         if (playback_eof && playback_sample_offset == playback_sample_count) {
-            jclass cls = (*env)->GetObjectClass(env, audio_track);
-            jmethodID get_head =
-                (*env)->GetMethodID(env, cls, "getPlaybackHeadPosition", "()I");
-            jint head = 0;
-            if (!clear_exception(env, "AudioTrack.getPlaybackHeadPosition") &&
-                get_head != NULL) {
-                head = (*env)->CallIntMethod(env, audio_track, get_head);
-                clear_exception(env, "get playback head");
-            }
-            (*env)->DeleteLocalRef(env, cls);
             if ((uint32_t)head >= (uint32_t)playback_samples_written) {
                 __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
                                     "Playback reached end of stream");
-                audio_stop_playback(env);
+                playback_position_samples = playback_duration_samples;
+                stop_playback(env);
                 set_status("Playback finished");
             }
         }
@@ -604,6 +632,7 @@ static void stop_playback(JNIEnv *env)
         (*env)->DeleteLocalRef(env, cls);
     }
     release_global(env, &audio_track);
+    playback_head_method = NULL;
     if (playback_file != NULL) {
         fclose(playback_file);
         playback_file = NULL;
@@ -684,6 +713,8 @@ int audio_stop_recording(JNIEnv *env)
     snprintf(original_name, sizeof(original_name), "%s", recording_name);
     snprintf(playback_path, sizeof(playback_path), "%s", recording_path);
     snprintf(playback_name, sizeof(playback_name), "%s", recording_name);
+    playback_position_samples = 0;
+    playback_duration_samples = samples;
     set_status(recording_uses_noise_suppressor
                    ? "Saved with Android noise suppression"
                    : "Saved; applying RNNoise");
@@ -700,7 +731,7 @@ static int start_playback(JNIEnv *env)
         return 0;
     }
     playback_file = fopen(playback_path, "rb");
-    if (playback_file == NULL || fseek(playback_file, WAV_HEADER_SIZE, SEEK_SET)) {
+    if (playback_file == NULL || fseek(playback_file, 0, SEEK_END) != 0) {
         if (playback_file != NULL) {
             fclose(playback_file);
             playback_file = NULL;
@@ -708,6 +739,18 @@ static int start_playback(JNIEnv *env)
         set_status("Could not open saved audio");
         return 0;
     }
+    long file_size = ftell(playback_file);
+    if (file_size < WAV_HEADER_SIZE ||
+        (file_size - WAV_HEADER_SIZE) % sizeof(int16_t) != 0 ||
+        fseek(playback_file, WAV_HEADER_SIZE, SEEK_SET) != 0) {
+        fclose(playback_file);
+        playback_file = NULL;
+        set_status("Saved audio is not a valid WAV recording");
+        return 0;
+    }
+    playback_position_samples = 0;
+    playback_duration_samples =
+        (file_size - WAV_HEADER_SIZE) / sizeof(int16_t);
     __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
                         "Starting playback for %s", playback_name);
 
@@ -768,6 +811,13 @@ static int start_playback(JNIEnv *env)
     cls = (*env)->GetObjectClass(env, audio_track);
     jmethodID play = (*env)->GetMethodID(env, cls, "play", "()V");
     int started = !clear_exception(env, "AudioTrack.play") && play != NULL;
+    if (started) {
+        playback_head_method = (*env)->GetMethodID(
+            env, cls, "getPlaybackHeadPosition", "()I");
+        started =
+            !clear_exception(env, "AudioTrack.getPlaybackHeadPosition") &&
+            playback_head_method != NULL;
+    }
     if (started) {
         (*env)->CallVoidMethod(env, audio_track, play);
         started = !clear_exception(env, "start playback");
@@ -835,6 +885,7 @@ int audio_stop_playback(JNIEnv *env)
         return 0;
     }
     stop_playback(env);
+    playback_position_samples = 0;
     set_status("Playback stopped");
     return 1;
 }
@@ -860,6 +911,7 @@ int audio_toggle_version(void)
         snprintf(playback_name, sizeof(playback_name), "%s", enhanced_name);
     }
     pthread_mutex_unlock(&enhancement_mutex);
+    playback_position_samples = 0;
     set_status("Selected recording version");
     return 1;
 }
@@ -879,7 +931,8 @@ static int make_enhanced_path(void)
     int name_size = snprintf(enhanced_name, sizeof(enhanced_name),
                              "%.*s_NN.wav", (int)base_length, original_name);
     int path_size = snprintf(enhanced_path, sizeof(enhanced_path), "%s/%s",
-                             gapp->activity->internalDataPath, enhanced_name);
+                             GetAndroidApp()->activity->internalDataPath,
+                             enhanced_name);
     return name_size > 0 && (size_t)name_size < sizeof(enhanced_name) &&
            path_size > 0 && (size_t)path_size < sizeof(enhanced_path);
 }

@@ -4,6 +4,7 @@ APPNAME := nullnoise
 LABEL := NullNoise
 PACKAGENAME := com.snappercayt.nullnoise
 RAWDRAWANDROID := third_party/rawdrawandroid
+RAYLIB := third_party/raylib
 BUILD_DIR := build
 RNNOISE := third_party/rnnoise
 RNNOISE_MODEL_HASH := $(shell cat $(RNNOISE)/model_version)
@@ -20,12 +21,23 @@ RNNOISE_SOURCES := \
 	$(RNNOISE)/src/nnet_default.c \
 	$(RNNOISE)/src/parse_lpcnet_weights.c \
 	$(RNNOISE)/src/rnnoise_tables.c
-SRC := src/main.c src/audio.c src/wav.c $(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
+RAYLIB_SOURCES := \
+	$(RAYLIB)/src/rcore.c \
+	$(RAYLIB)/src/rshapes.c \
+	$(RAYLIB)/src/rtextures.c \
+	$(RAYLIB)/src/rtext.c
+SRC := src/main.c src/audio.c src/wav.c $(RAYLIB_SOURCES) \
+	$(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
 CFLAGS += -pthread \
+	-DPLATFORM_ANDROID \
+	-DGRAPHICS_API_OPENGL_ES2 \
+	-DSUPPORT_MODULE_RAUDIO=0 \
+	-DSUPPORT_MODULE_RMODELS=0 \
+	-I$(RAYLIB)/src \
 	-I$(RNNOISE)/include \
 	-I$(RNNOISE)/src \
 	-I$(RNNOISE_MODEL_DIR)/src
-LDFLAGS += -pthread
+LDFLAGS += -pthread -ldl -latomic -lGLESv2 -Wl,--wrap=fopen
 
 ANDROIDVERSION ?= 30
 ANDROIDTARGET ?= 35

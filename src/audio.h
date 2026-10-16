@@ -2,6 +2,7 @@
 #define NULLNOISE_AUDIO_H
 
 #include <jni.h>
+#include <stdint.h>
 
 enum audio_state {
     AUDIO_IDLE,
@@ -19,6 +20,8 @@ const char *audio_get_status(void);
 const char *audio_get_latest_recording_name(void);
 const char *audio_get_playback_name(void);
 int audio_has_recording(void);
+int64_t audio_get_playback_position_samples(void);
+int64_t audio_get_playback_duration_samples(void);
 int audio_start_recording(JNIEnv *env);
 int audio_stop_recording(JNIEnv *env);
 int audio_toggle_playback(JNIEnv *env);

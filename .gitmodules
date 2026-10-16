@@ -1,6 +1,9 @@
 [submodule "rawdrawandroid"]
 	path = third_party/rawdrawandroid
 	url = https://github.com/cnlohr/rawdrawandroid.git
+[submodule "third_party/raylib"]
+	path = third_party/raylib
+	url = https://github.com/raysan5/raylib.git
 [submodule "third_party/rnnoise"]
 	path = third_party/rnnoise
 	url = https://github.com/xiph/rnnoise.git
