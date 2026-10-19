@@ -81,6 +81,33 @@ their APK artifacts are temporary and are not published releases. APKs are
 debug-signed beta prototypes, not production builds. The current beta is
 [v0.1.6](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.6).
 
+## Roadmap
+
+Planned improvements, ordered by impact. The full review input is in
+`docs/development/ARCHITECTURE-REVIEW.md`.
+
+1. **Host-test the audio engine (blocking).** `scripts/test-local.sh` compiles
+   only `wav.c` and the miniaudio ring-buffer test. `audio.c` and `main.c`
+   require the NDK and have no host compile or unit coverage. Move WAV +
+   RNNoise-normalize logic into a portable core with a host unit.
+2. **Replace the `#if` capture duality.** `AudioRecord` + Android
+   `NoiseSuppressor` and the miniaudio voice-recognition path are two
+   parallel implementations behind `NULLNOISE_MINIAUDIO_CAPTURE`. Unify
+   under one API with two thin backends.
+3. **Shrink the native library for a 1 GB RAM device.** Add
+   `-ffunction-sections -fdata-sections -Wl,--gc-sections` to `LDFLAGS`
+   so unreferenced miniaudio/raylib backends are dropped.
+4. **Tune capture and playback buffers.** `CAPTURE_BUFFER_FRAMES`
+   (~384 KB) and the `AudioTrack` stream buffer are fixed magic numbers.
+   Make them named and device-aware.
+5. **Temp file + rename for enhanced output.** Replace the in-place seek
+   rewrite so the source clip is guaranteed untouched and a partial
+   `_NN.wav` is never surfaced.
+6. **Fix the head-position cast.** Cast the `AudioTrack` head to `int64_t`
+   once; do not truncate to `uint32_t`.
+7. **Revisit the 390 px UI scaling target.** Confirm the phone-oriented base
+   width is deliberate, or move to a responsive layout.
+
 ## Contributing and project policies
 
 Contributions are welcome. See the [contribution guide](CONTRIBUTING.md), the
