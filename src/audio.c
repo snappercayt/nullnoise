@@ -19,6 +19,7 @@
 #include "audio_capture.h"
 #include "rnnoise.h"
 #include "wav.h"
+#include "portable_core.h"
 
 #ifndef NULLNOISE_MINIAUDIO_CAPTURE
 #define NULLNOISE_MINIAUDIO_CAPTURE 0
@@ -26,11 +27,8 @@
 
 #define LOG_TAG "NullNoise"
 #define SAMPLE_RATE 48000
-#define FRAME_SAMPLES 480
 #define RECORD_BUFFER_SAMPLES 960
 #define PLAY_BUFFER_SAMPLES 960
-#define TARGET_PEAK 0.89f
-#define MAX_NORMALIZE_GAIN 4.0f
 
 static int playback_first_write_logged;
 static _Atomic enum audio_state state = AUDIO_IDLE;
@@ -1004,157 +1002,20 @@ static int make_enhanced_path(void)
            path_size > 0 && (size_t)path_size < sizeof(enhanced_path);
 }
 
-static int process_recording(void)
-{
-    FILE *input = fopen(original_path, "rb");
-    if (input == NULL || fseek(input, WAV_HEADER_SIZE, SEEK_SET) != 0) {
-        if (input != NULL) {
-            fclose(input);
-        }
-        set_enhancement_status("Could not open recording for enhancement");
-        return 0;
-    }
-    struct stat output_info;
-    if (stat(enhanced_path, &output_info) == 0) {
-        fclose(input);
-        set_enhancement_status("Enhanced file already exists");
-        return 0;
-    }
-    FILE *output = fopen(enhanced_path, "wb+");
-    if (output == NULL) {
-        fclose(input);
-        set_enhancement_status("Could not create enhanced recording");
-        return 0;
-    }
-    unsigned char blank_header[WAV_HEADER_SIZE] = {0};
-    if (fwrite(blank_header, 1, sizeof(blank_header), output) !=
-        sizeof(blank_header)) {
-        fclose(input);
-        fclose(output);
-        unlink(enhanced_path);
-        set_enhancement_status("Could not write enhanced recording");
-        return 0;
-    }
-
-    DenoiseState *denoise = rnnoise_create(NULL);
-    if (denoise == NULL) {
-        fclose(input);
-        fclose(output);
-        unlink(enhanced_path);
-        set_enhancement_status("Could not initialize RNNoise");
-        return 0;
-    }
-
-    int16_t input_pcm[FRAME_SAMPLES];
-    int16_t output_pcm[FRAME_SAMPLES];
-    float input_frame[FRAME_SAMPLES];
-    float output_frame[FRAME_SAMPLES];
-    uint32_t sample_count = 0;
-    float peak = 0.0f;
-    int ok = 1;
-    for (;;) {
-        size_t count = fread(input_pcm, sizeof(input_pcm[0]), FRAME_SAMPLES,
-                             input);
-        if (count == 0) {
-            if (ferror(input)) {
-                ok = 0;
-            }
-            break;
-        }
-        for (size_t i = 0; i < FRAME_SAMPLES; ++i) {
-            input_frame[i] = i < count ? (float)input_pcm[i] : 0.0f;
-        }
-        rnnoise_process_frame(denoise, output_frame, input_frame);
-        for (size_t i = 0; i < count; ++i) {
-            float value = output_frame[i];
-            if (value > peak) {
-                peak = value;
-            } else if (-value > peak) {
-                peak = -value;
-            }
-            if (value > 32767.0f) {
-                value = 32767.0f;
-            } else if (value < -32768.0f) {
-                value = -32768.0f;
-            }
-            output_pcm[i] = (int16_t)value;
-        }
-        if (count > (UINT32_MAX - 36) / sizeof(int16_t) - sample_count ||
-            fwrite(output_pcm, sizeof(output_pcm[0]), count, output) != count) {
-            ok = 0;
-            break;
-        }
-        sample_count += (uint32_t)count;
-    }
-    rnnoise_destroy(denoise);
-
-    if (ok && fflush(output) == 0 && fseek(output, WAV_HEADER_SIZE, SEEK_SET) == 0) {
-        float gain = peak > 0.0f ? TARGET_PEAK * 32767.0f / peak : 1.0f;
-        if (gain > MAX_NORMALIZE_GAIN) {
-            gain = MAX_NORMALIZE_GAIN;
-        }
-        uint32_t remaining = sample_count;
-        while (remaining > 0) {
-            size_t count = remaining > FRAME_SAMPLES ? FRAME_SAMPLES : remaining;
-            if (fread(output_pcm, sizeof(output_pcm[0]), count, output) != count) {
-                ok = 0;
-                break;
-            }
-            for (size_t i = 0; i < count; ++i) {
-                float value = output_pcm[i] * gain;
-                if (value > 32767.0f) {
-                    value = 32767.0f;
-                } else if (value < -32768.0f) {
-                    value = -32768.0f;
-                }
-                output_pcm[i] = (int16_t)value;
-            }
-            if (fseek(output, -(long)(count * sizeof(output_pcm[0])), SEEK_CUR) !=
-                    0 ||
-                fwrite(output_pcm, sizeof(output_pcm[0]), count, output) !=
-                    count ||
-                fseek(output, 0, SEEK_CUR) != 0) {
-                ok = 0;
-                break;
-            }
-            remaining -= (uint32_t)count;
-        }
-    } else {
-        ok = 0;
-    }
-    if (ok) {
-        ok = write_wav_header(output, sample_count);
-    }
-    if (fclose(input) != 0) {
-        ok = 0;
-    }
-    if (fclose(output) != 0) {
-        ok = 0;
-    }
-
-    if (!ok) {
-        unlink(enhanced_path);
-        set_enhancement_status("RNNoise enhancement failed");
-        return 0;
-    }
-    pthread_mutex_lock(&enhancement_mutex);
-    snprintf(playback_path, sizeof(playback_path), "%s", enhanced_path);
-    snprintf(playback_name, sizeof(playback_name), "%s", enhanced_name);
-    snprintf(enhancement_status, sizeof(enhancement_status), "Saved %s",
-             enhanced_name);
-    pthread_mutex_unlock(&enhancement_mutex);
-    return 1;
-}
-
 static void *enhancement_worker(void *unused)
 {
     (void)unused;
-    int ok = process_recording();
+    int ok = rnnoise_normalize_file(original_path, enhanced_path);
     pthread_mutex_lock(&enhancement_mutex);
     state = AUDIO_IDLE;
-    snprintf(status_text, sizeof(status_text), "%s",
-             ok ? "Noise reduced and loudness normalized"
-                : enhancement_status);
+    if (ok) {
+        snprintf(playback_path, sizeof(playback_path), "%s", enhanced_path);
+        snprintf(playback_name, sizeof(playback_name), "%s", enhanced_name);
+        snprintf(enhancement_status, sizeof(enhancement_status), "Saved %s",
+                 enhanced_name);
+    } else {
+        snprintf(enhancement_status, sizeof(enhancement_status), "RNNoise enhancement failed");
+    }
     pthread_mutex_unlock(&enhancement_mutex);
     return NULL;
 }

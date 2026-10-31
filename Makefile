@@ -27,7 +27,7 @@ RAYLIB_SOURCES := \
 	$(RAYLIB)/src/rshapes.c \
 	$(RAYLIB)/src/rtextures.c \
 	$(RAYLIB)/src/rtext.c
-SRC := src/main.c src/audio.c src/wav.c $(RAYLIB_SOURCES) \
+SRC := src/main.c src/audio.c src/wav.c src/portable_core.c $(RAYLIB_SOURCES) \
 	$(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
 ifeq ($(MINIAUDIO_CAPTURE),1)
 SRC += src/audio_capture.c src/miniaudio_impl.c
