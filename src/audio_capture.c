@@ -1,3 +1,7 @@
+#ifndef NULLNOISE_MINIAUDIO_CAPTURE
+#define NULLNOISE_MINIAUDIO_CAPTURE 0
+#endif
+#if NULLNOISE_MINIAUDIO_CAPTURE
 #define _POSIX_C_SOURCE 200809L
 
 #include "audio_capture.h"
@@ -242,3 +246,31 @@ uint64_t audio_capture_samples_written(void)
 {
     return atomic_load_explicit(&capture.samples_written, memory_order_relaxed);
 }
+
+#else
+#include <jni.h>
+
+int audio_capture_start(JNIEnv *env, FILE *output)
+{
+    (void)env;
+    (void)output;
+    return 0;
+}
+
+int audio_capture_stop(JNIEnv *env, uint64_t *sample_count, uint64_t *overrun_count)
+{
+    (void)env;
+    if (sample_count != NULL) {
+        *sample_count = 0;
+    }
+    if (overrun_count != NULL) {
+        *overrun_count = 0;
+    }
+    return 0;
+}
+
+uint64_t audio_capture_samples_written(void)
+{
+    return 0;
+}
+#endif
