@@ -1002,10 +1002,15 @@ static int make_enhanced_path(void)
            path_size > 0 && (size_t)path_size < sizeof(enhanced_path);
 }
 
+static int process_recording(void)
+{
+    return rnnoise_normalize_file(original_path, enhanced_path);
+}
+
 static void *enhancement_worker(void *unused)
 {
     (void)unused;
-    int ok = rnnoise_normalize_file(original_path, enhanced_path);
+    int ok = process_recording();
     pthread_mutex_lock(&enhancement_mutex);
     state = AUDIO_IDLE;
     if (ok) {
