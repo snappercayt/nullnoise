@@ -583,6 +583,7 @@ void audio_tick(JNIEnv *env)
             }
             recording_samples_written += count;
         }
+    }
 #else
     (void)env;
 #endif
