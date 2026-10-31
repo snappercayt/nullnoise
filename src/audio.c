@@ -486,7 +486,7 @@ int audio_start_recording(JNIEnv *env)
     }
 
 #if NULLNOISE_MINIAUDIO_CAPTURE
-    if (!audio_capture_start(recording_file)) {
+    if (!audio_capture_start(env, recording_file)) {
         fclose(recording_file);
         recording_file = NULL;
         unlink(recording_path);
@@ -709,7 +709,7 @@ int audio_stop_recording(JNIEnv *env)
 #if NULLNOISE_MINIAUDIO_CAPTURE
     uint64_t captured_samples = 0;
     uint64_t capture_overruns = 0;
-    capture_ok = audio_capture_stop(&captured_samples, &capture_overruns);
+    capture_ok = audio_capture_stop(env, &captured_samples, &capture_overruns);
     recording_samples_written = (int64_t)captured_samples;
     (void)env;
 #else

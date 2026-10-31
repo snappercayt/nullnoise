@@ -125,8 +125,9 @@ static void cleanup_capture(void)
     }
 }
 
-int audio_capture_start(FILE *output)
+int audio_capture_start(JNIEnv *env, FILE *output)
 {
+    (void)env;
     if (output == NULL) {
         return 0;
     }
@@ -190,8 +191,9 @@ int audio_capture_start(FILE *output)
     return 1;
 }
 
-int audio_capture_stop(uint64_t *sample_count, uint64_t *overrun_count)
+int audio_capture_stop(JNIEnv *env, uint64_t *sample_count, uint64_t *overrun_count)
 {
+    (void)env;
     if (capture.device_initialized) {
         ma_result result = ma_device_stop(&capture.device);
         if (result != MA_SUCCESS) {
