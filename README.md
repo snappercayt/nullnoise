@@ -2,13 +2,13 @@
 
 NullNoise is an Android voice-recording app built with C and the Android NDK. It lets you record audio, save clips locally, and apply a one-tap noise-reduction and voice-enhancement pass.
 
-> **Welcome to the NullNoise v0.1.6 beta!** [Download the APK](https://github.com/snappercayt/nullnoise/releases/download/v0.1.6/NullNoise-v0.1.6.apk)
-> or read the [beta release notes](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.6).
-> Early physical-device testing reports that the original recording retains
-> ambient sounds naturally and the enhanced voice is clear. **Known beta issue:**
-> enhancement may cut off word endings. Your original clip is kept unchanged;
-> compare both versions and share feedback before relying on the enhanced clip.
-> This is a debug-signed prototype, not for important recordings.
+> **Welcome to the NullNoise v0.1.7 beta!** [Download the APK](https://github.com/snappercayt/nullnoise/releases/download/v0.1.7/NullNoise-v0.1.7.apk)
+> or read the [beta release notes](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.7).
+> This release unifies the capture engine and hardens the automated checks;
+> early feedback is that it works noticeably better than v0.1.6. Your original
+> clip is always kept unchanged. **Known beta issue:** enhancement may still
+> cut off word endings, so compare both versions before relying on the
+> enhanced clip. This is a debug-signed prototype, not for important recordings.
 
 ## Project goals
 
@@ -47,11 +47,12 @@ The original recording should remain unchanged when an enhanced copy is created.
 NullNoise is an Android NativeActivity written in C. It uses
 [raylib](https://github.com/raysan5/raylib) for rendering and touch input, and
 [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid) for NativeActivity
-glue and APK packaging. The v0.1.6 beta uses miniaudio for microphone capture
-with Android's voice-recognition input preset, Android `AudioTrack` for
-playback, and RNNoise for enhancement. It does not attach the separate Android
-`NoiseSuppressor` effect. The app targets Android API 35 and compiles native
-code against API 30.
+glue and APK packaging. The v0.1.7 release records through Android
+`AudioRecord` with an optional `NoiseSuppressor` session effect, plays back
+through Android `AudioTrack`, and enhances with RNNoise. An experimental
+miniaudio voice-recognition capture path exists as a separate opt-in CI build
+but is not part of this release. The app targets Android API 35 and compiles
+native code against API 30.
 
 The custom raylib canvas does not currently expose semantic controls to
 TalkBack; full screen-reader support needs native accessibility integration.
@@ -66,13 +67,13 @@ Recordings are intended to stay on-device. Do not add network upload or analytic
 
 ## Repository status
 
-NullNoise v0.1.6 is an early beta with a single-screen record, playback, and
+NullNoise v0.1.7 is an early beta with a single-screen record, playback, and
 enhancement flow. Recording, enhancement, playback, and sample continuity pass
-the Android 15 emulator checks. Early physical-device feedback reports that
-original recordings sound natural and enhanced speech is clear, but some word
-endings may be cut off. Keep the original recording and review both versions.
-This branch adds a unified capture API and host compile checks; it still needs
-an Android emulator run before being published as a release.
+the Android 15 emulator smoke test, and every build runs host compile checks
+for both capture backends. Early feedback is that v0.1.7 works much better
+than the previous beta, with more reliable capture and playback. Some word
+endings may still be cut off by enhancement; keep the original recording and
+review both versions.
 
 ### Releases
 
@@ -81,7 +82,7 @@ page for published APKs and release notes. New releases appear there
 automatically. For non-release builds, see the [Android workflow runs](https://github.com/snappercayt/nullnoise/actions/workflows/android.yml);
 their APK artifacts are temporary and are not published releases. APKs are
 debug-signed beta prototypes, not production builds. The current beta is
-[v0.1.6](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.6).
+[v0.1.7](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.7).
 
 ## Roadmap
 
@@ -98,6 +99,8 @@ Completed:
   `audio_capture.c`. Only `src/miniaudio_impl.c` is conditional in the Makefile.
 - **Fix the head-position cast.** Playback head position is compared in 64-bit
   instead of being truncated to `uint32_t`.
+- **Harden CI and the emulator smoke test.** Validated action versions,
+  restored the release gate, and fixed flaky timing checks.
 
 Remaining:
 
