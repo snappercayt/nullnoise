@@ -71,6 +71,8 @@ enhancement flow. Recording, enhancement, playback, and sample continuity pass
 the Android 15 emulator checks. Early physical-device feedback reports that
 original recordings sound natural and enhanced speech is clear, but some word
 endings may be cut off. Keep the original recording and review both versions.
+This branch adds a unified capture API and host compile checks; it still needs
+an Android emulator run before being published as a release.
 
 ### Releases
 
@@ -86,26 +88,28 @@ debug-signed beta prototypes, not production builds. The current beta is
 Planned improvements, ordered by impact. The full review input is in
 `docs/development/ARCHITECTURE-REVIEW.md`.
 
-1. **Host-test the audio engine (blocking).** `scripts/test-local.sh` compiles
-   only `wav.c` and the miniaudio ring-buffer test. `audio.c` and `main.c`
-   require the NDK and have no host compile or unit coverage. Move WAV +
-   RNNoise-normalize logic into a portable core with a host unit.
-2. **Replace the `#if` capture duality.** `AudioRecord` + Android
-   `NoiseSuppressor` and the miniaudio voice-recognition path are two
-   parallel implementations behind `NULLNOISE_MINIAUDIO_CAPTURE`. Unify
-   under one API with two thin backends.
-3. **Shrink the native library for a 1 GB RAM device.** Add
+Completed:
+
+- **Host-test the audio engine.** WAV + RNNoise normalization live in a
+  portable core with a host unit, and `scripts/test-local.sh` now compiles
+  `audio.c` and `audio_capture.c` with `-Werror` in both backend configurations.
+- **Replace the `#if` capture duality.** `audio.c` calls one `audio_capture`
+  API; the `AudioRecord` and miniaudio implementations are thin backends in
+  `audio_capture.c`. Only `src/miniaudio_impl.c` is conditional in the Makefile.
+- **Fix the head-position cast.** Playback head position is compared in 64-bit
+  instead of being truncated to `uint32_t`.
+
+Remaining:
+
+1. **Shrink the native library for a 1 GB RAM device.** Add
    `-ffunction-sections -fdata-sections -Wl,--gc-sections` to `LDFLAGS`
    so unreferenced miniaudio/raylib backends are dropped.
-4. **Tune capture and playback buffers.** `CAPTURE_BUFFER_FRAMES`
-   (~384 KB) and the `AudioTrack` stream buffer are fixed magic numbers.
-   Make them named and device-aware.
-5. **Temp file + rename for enhanced output.** Replace the in-place seek
-   rewrite so the source clip is guaranteed untouched and a partial
-   `_NN.wav` is never surfaced.
-6. **Fix the head-position cast.** Cast the `AudioTrack` head to `int64_t`
-   once; do not truncate to `uint32_t`.
-7. **Revisit the 390 px UI scaling target.** Confirm the phone-oriented base
+2. **Tune capture and playback buffers.** `CAPTURE_BUFFER_FRAMES` (~384 KB) and
+   the `AudioTrack` stream buffer are fixed magic numbers. Make them named and
+   device-aware.
+3. **Temp file + rename for enhanced output.** Replace the in-place seek
+   rewrite so a partial `_NN.wav` is never surfaced as complete.
+4. **Revisit the 390 px UI scaling target.** Confirm the phone-oriented base
    width is deliberate, or move to a responsive layout.
 
 ## Contributing and project policies

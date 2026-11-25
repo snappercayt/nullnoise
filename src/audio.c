@@ -21,20 +21,12 @@
 #include "wav.h"
 #include "portable_core.h"
 
-#ifndef NULLNOISE_MINIAUDIO_CAPTURE
-#define NULLNOISE_MINIAUDIO_CAPTURE 0
-#endif
-
 #define LOG_TAG "NullNoise"
 #define SAMPLE_RATE 48000
-#define RECORD_BUFFER_SAMPLES 960
 #define PLAY_BUFFER_SAMPLES 960
 
 static int playback_first_write_logged;
 static _Atomic enum audio_state state = AUDIO_IDLE;
-static int noise_suppressor_available;
-static int recording_uses_noise_suppressor;
-static int audio_record_started;
 static char status_text[128] = "Checking microphone support";
 static char recording_path[1024];
 static char recording_name[128];
@@ -45,10 +37,7 @@ static char playback_name[128];
 static char enhanced_path[1024];
 static char enhanced_name[128];
 static FILE *recording_file;
-static jobject audio_record;
-static jobject noise_suppressor;
 static jobject audio_track;
-static jshortArray sample_array;
 static jshortArray playback_array;
 static FILE *playback_file;
 static short playback_samples[PLAY_BUFFER_SAMPLES];
@@ -56,7 +45,6 @@ static int playback_sample_count;
 static int playback_sample_offset;
 static int playback_eof;
 static int64_t playback_samples_written;
-static int64_t recording_samples_written;
 static int64_t playback_position_samples;
 static int64_t playback_duration_samples;
 static jmethodID playback_head_method;
@@ -73,13 +61,6 @@ static void set_status(const char *text)
 {
     pthread_mutex_lock(&enhancement_mutex);
     snprintf(status_text, sizeof(status_text), "%s", text);
-    pthread_mutex_unlock(&enhancement_mutex);
-}
-
-static void set_enhancement_status(const char *text)
-{
-    pthread_mutex_lock(&enhancement_mutex);
-    snprintf(enhancement_status, sizeof(enhancement_status), "%s", text);
     pthread_mutex_unlock(&enhancement_mutex);
 }
 
@@ -112,180 +93,9 @@ static void release_global(JNIEnv *env, jobject *object)
     }
 }
 
-static void release_noise_suppressor(JNIEnv *env)
-{
-    if (noise_suppressor == NULL) {
-        return;
-    }
-
-    jclass cls = (*env)->GetObjectClass(env, noise_suppressor);
-    if (!clear_exception(env, "NoiseSuppressor.getClass") && cls != NULL) {
-        jmethodID release = (*env)->GetMethodID(env, cls, "release", "()V");
-        if (!clear_exception(env, "NoiseSuppressor.release") && release != NULL) {
-            (*env)->CallVoidMethod(env, noise_suppressor, release);
-            clear_exception(env, "release NoiseSuppressor");
-        }
-        (*env)->DeleteLocalRef(env, cls);
-    }
-    release_global(env, &noise_suppressor);
-}
-
-static int create_audio_record(JNIEnv *env)
-{
-    jclass cls = find_class(env, "android/media/AudioRecord");
-    if (cls == NULL) {
-        return 0;
-    }
-
-    jmethodID get_min_buffer = (*env)->GetStaticMethodID(
-        env, cls, "getMinBufferSize", "(III)I");
-    if (clear_exception(env, "AudioRecord.getMinBufferSize") ||
-        get_min_buffer == NULL) {
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-
-    jint min_buffer = (*env)->CallStaticIntMethod(env, cls, get_min_buffer,
-                                                  SAMPLE_RATE, 16, 2);
-    if (clear_exception(env, "AudioRecord.getMinBufferSize") || min_buffer < 0) {
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-
-    jmethodID constructor =
-        (*env)->GetMethodID(env, cls, "<init>", "(IIIII)V");
-    if (clear_exception(env, "AudioRecord constructor") || constructor == NULL) {
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-
-    jobject local_record = (*env)->NewObject(
-        env, cls, constructor, 7, SAMPLE_RATE, 16, 2,
-        (jint)(min_buffer > RECORD_BUFFER_SAMPLES * 4
-                   ? min_buffer
-                   : RECORD_BUFFER_SAMPLES * 4));
-    if (clear_exception(env, "create AudioRecord") || local_record == NULL) {
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-
-    jmethodID get_state = (*env)->GetMethodID(env, cls, "getState", "()I");
-    if (clear_exception(env, "AudioRecord.getState") || get_state == NULL) {
-        (*env)->DeleteLocalRef(env, local_record);
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-    jint initialized = (*env)->CallIntMethod(env, local_record, get_state);
-    if (clear_exception(env, "AudioRecord.getState") || initialized != 1) {
-        (*env)->DeleteLocalRef(env, local_record);
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-
-    jmethodID get_session =
-        (*env)->GetMethodID(env, cls, "getAudioSessionId", "()I");
-    if (clear_exception(env, "AudioRecord.getAudioSessionId") ||
-        get_session == NULL) {
-        (*env)->DeleteLocalRef(env, local_record);
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-    jint session = (*env)->CallIntMethod(env, local_record, get_session);
-    if (clear_exception(env, "AudioRecord.getAudioSessionId")) {
-        (*env)->DeleteLocalRef(env, local_record);
-        (*env)->DeleteLocalRef(env, cls);
-        return 0;
-    }
-
-    recording_uses_noise_suppressor = 0;
-    if (noise_suppressor_available) {
-        jclass ns_cls = find_class(env, "android/media/audiofx/NoiseSuppressor");
-        if (ns_cls != NULL) {
-            jmethodID create =
-                (*env)->GetStaticMethodID(env, ns_cls, "create",
-                                          "(I)Landroid/media/audiofx/"
-                                          "NoiseSuppressor;");
-            jobject local_ns = NULL;
-            if (!clear_exception(env, "NoiseSuppressor.create") && create) {
-                local_ns = (*env)->CallStaticObjectMethod(env, ns_cls, create,
-                                                          session);
-                clear_exception(env, "NoiseSuppressor.create");
-            }
-            if (local_ns != NULL) {
-                jmethodID set_enabled = (*env)->GetMethodID(
-                    env, ns_cls, "setEnabled", "(Z)I");
-                if (!clear_exception(env, "NoiseSuppressor.setEnabled") &&
-                    set_enabled != NULL) {
-                    (*env)->CallIntMethod(env, local_ns, set_enabled, JNI_TRUE);
-                    if (!clear_exception(env, "enable NoiseSuppressor")) {
-                        jmethodID get_enabled = (*env)->GetMethodID(
-                            env, ns_cls, "getEnabled", "()Z");
-                        if (!clear_exception(env, "NoiseSuppressor.getEnabled") &&
-                            get_enabled != NULL) {
-                            jboolean enabled =
-                                (*env)->CallBooleanMethod(env, local_ns,
-                                                          get_enabled);
-                            if (!clear_exception(env,
-                                                 "check NoiseSuppressor") &&
-                                enabled) {
-                                noise_suppressor =
-                                    (*env)->NewGlobalRef(env, local_ns);
-                                recording_uses_noise_suppressor =
-                                    noise_suppressor != NULL;
-                            }
-                        }
-                    }
-                }
-                (*env)->DeleteLocalRef(env, local_ns);
-            }
-            (*env)->DeleteLocalRef(env, ns_cls);
-        }
-    }
-
-    audio_record = (*env)->NewGlobalRef(env, local_record);
-    (*env)->DeleteLocalRef(env, local_record);
-    (*env)->DeleteLocalRef(env, cls);
-    if (audio_record == NULL) {
-        release_noise_suppressor(env);
-        recording_uses_noise_suppressor = 0;
-        return 0;
-    }
-    return 1;
-}
-
 void audio_initialize(JNIEnv *env)
 {
-#if NULLNOISE_MINIAUDIO_CAPTURE
-    (void)env;
-    noise_suppressor_available = 0;
-    set_status("Miniaudio voice-recognition capture ready");
-#else
-    jclass cls = find_class(env, "android/media/audiofx/NoiseSuppressor");
-    if (cls == NULL) {
-        noise_suppressor_available = 0;
-        set_status("Android noise suppression unavailable");
-    } else {
-        jmethodID method =
-            (*env)->GetStaticMethodID(env, cls, "isAvailable", "()Z");
-        if (clear_exception(env, "NoiseSuppressor.isAvailable") ||
-            method == NULL) {
-            noise_suppressor_available = 0;
-            set_status("Could not check Android noise suppression");
-        } else {
-            noise_suppressor_available =
-                (*env)->CallStaticBooleanMethod(env, cls, method) == JNI_TRUE;
-            if (clear_exception(env, "NoiseSuppressor.isAvailable")) {
-                noise_suppressor_available = 0;
-                set_status("Could not check Android noise suppression");
-            } else {
-                set_status(noise_suppressor_available
-                               ? "Android noise suppression is available"
-                               : "Using RNNoise after recording");
-            }
-        }
-        (*env)->DeleteLocalRef(env, cls);
-    }
-#endif
+    set_status(audio_capture_initialize(env));
 
     const char *directory = GetAndroidApp()->activity->internalDataPath;
     DIR *dir = opendir(directory);
@@ -300,7 +110,8 @@ void audio_initialize(JNIEnv *env)
     time_t newest = 0;
     while ((entry = readdir(dir)) != NULL) {
         size_t length = strlen(entry->d_name);
-        if (length < 7 || strcmp(entry->d_name + length - 4, ".wav") != 0 ||
+        if (length < 7 || length >= sizeof(original_name) ||
+            strcmp(entry->d_name + length - 4, ".wav") != 0 ||
             (strstr(entry->d_name, "_NS.wav") == NULL &&
              strstr(entry->d_name, "_RAW.wav") == NULL)) {
             continue;
@@ -317,7 +128,8 @@ void audio_initialize(JNIEnv *env)
         if (stat(path, &info) == 0 && info.st_mtime > newest) {
             newest = info.st_mtime;
             snprintf(original_path, sizeof(original_path), "%s", path);
-            snprintf(original_name, sizeof(original_name), "%s", entry->d_name);
+            snprintf(original_name, sizeof(original_name), "%.*s",
+                     (int)length, entry->d_name);
         }
     }
     closedir(dir);
@@ -355,16 +167,12 @@ enum audio_state audio_get_state(void)
 
 int audio_noise_suppressor_available(void)
 {
-#if NULLNOISE_MINIAUDIO_CAPTURE
-    return 0;
-#else
-    return noise_suppressor_available;
-#endif
+    return audio_capture_noise_suppressor_available();
 }
 
 int audio_recording_uses_noise_suppressor(void)
 {
-    return recording_uses_noise_suppressor;
+    return audio_capture_uses_noise_suppressor();
 }
 
 const char *audio_get_status(void)
@@ -407,12 +215,7 @@ int64_t audio_get_playback_position_samples(void)
 
 int64_t audio_get_recording_samples(void)
 {
-#if NULLNOISE_MINIAUDIO_CAPTURE
-    if (state == AUDIO_RECORDING) {
-        return (int64_t)audio_capture_samples_written();
-    }
-#endif
-    return recording_samples_written;
+    return (int64_t)audio_capture_samples_written();
 }
 
 int64_t audio_get_playback_duration_samples(void)
@@ -426,27 +229,21 @@ int audio_start_recording(JNIEnv *env)
         set_status("Stop the current action first");
         return 0;
     }
-#if !NULLNOISE_MINIAUDIO_CAPTURE
-    if (!create_audio_record(env)) {
+    if (!audio_capture_prepare(env)) {
         set_status("Could not start microphone");
         return 0;
     }
-#else
-    recording_uses_noise_suppressor = 0;
-#endif
 
     struct timespec now;
     if (clock_gettime(CLOCK_REALTIME, &now) != 0) {
         set_status("Could not create recording name");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
+        audio_capture_release(env);
         return 0;
     }
     struct tm local_time;
     if (localtime_r(&now.tv_sec, &local_time) == NULL) {
         set_status("Could not create recording name");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
+        audio_capture_release(env);
         return 0;
     }
 
@@ -454,21 +251,19 @@ int audio_start_recording(JNIEnv *env)
     if (strftime(base_name, sizeof(base_name), "recording_%Y%m%d_%H%M%S",
                  &local_time) == 0) {
         set_status("Could not create recording name");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
+        audio_capture_release(env);
         return 0;
     }
     const char *suffix =
-        recording_uses_noise_suppressor ? "_NS.wav" : "_RAW.wav";
+        audio_capture_uses_noise_suppressor() ? "_NS.wav" : "_RAW.wav";
     snprintf(recording_name, sizeof(recording_name), "%s_%03ld%s", base_name,
              now.tv_nsec / 1000000, suffix);
     int path_size = snprintf(recording_path, sizeof(recording_path), "%s/%s",
-                              GetAndroidApp()->activity->internalDataPath,
-                              recording_name);
+                             GetAndroidApp()->activity->internalDataPath,
+                             recording_name);
     if (path_size < 0 || (size_t)path_size >= sizeof(recording_path)) {
         set_status("Recording path is too long");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
+        audio_capture_release(env);
         return 0;
     }
 
@@ -480,113 +275,35 @@ int audio_start_recording(JNIEnv *env)
             unlink(recording_path);
         }
         set_status("Could not save recording");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
+        audio_capture_release(env);
         return 0;
     }
 
-#if NULLNOISE_MINIAUDIO_CAPTURE
     if (!audio_capture_start(env, recording_file)) {
+        const char *error = audio_capture_last_error();
         fclose(recording_file);
         recording_file = NULL;
         unlink(recording_path);
-        set_status("Could not start miniaudio microphone capture");
-        return 0;
-    }
-#else
-    sample_array = (*env)->NewShortArray(env, RECORD_BUFFER_SAMPLES);
-    if (clear_exception(env, "allocate recording buffer") ||
-        sample_array == NULL) {
-        fclose(recording_file);
-        recording_file = NULL;
-        unlink(recording_path);
-        set_status("Could not allocate recording buffer");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
+        audio_capture_release(env);
+        set_status(error != NULL ? error : "Could not start microphone");
         return 0;
     }
 
-    jclass cls = (*env)->GetObjectClass(env, audio_record);
-    jmethodID start = (*env)->GetMethodID(env, cls, "startRecording", "()V");
-    if (clear_exception(env, "AudioRecord.startRecording") || start == NULL) {
-        (*env)->DeleteLocalRef(env, cls);
-        fclose(recording_file);
-        recording_file = NULL;
-        unlink(recording_path);
-        (*env)->DeleteLocalRef(env, sample_array);
-        sample_array = NULL;
-        set_status("Could not start microphone");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
-        return 0;
-    }
-    (*env)->CallVoidMethod(env, audio_record, start);
-    int start_failed = clear_exception(env, "start recording");
-    (*env)->DeleteLocalRef(env, cls);
-    if (start_failed) {
-        fclose(recording_file);
-        recording_file = NULL;
-        unlink(recording_path);
-        (*env)->DeleteLocalRef(env, sample_array);
-        sample_array = NULL;
-        set_status("Microphone could not start");
-        release_global(env, &audio_record);
-        release_noise_suppressor(env);
-        return 0;
-    }
-#endif
-
-#if !NULLNOISE_MINIAUDIO_CAPTURE
-    audio_record_started = 1;
-#endif
-    recording_samples_written = 0;
     state = AUDIO_RECORDING;
-#if NULLNOISE_MINIAUDIO_CAPTURE
-    set_status("Recording with Android voice-recognition preset");
-#else
-    set_status(recording_uses_noise_suppressor
-                   ? "Recording with Android noise suppression"
-                   : "Recording without NS; RNNoise will run on stop");
-#endif
+    set_status(audio_capture_recording_status());
     return 1;
 }
 
 void audio_tick(JNIEnv *env)
 {
-#if !NULLNOISE_MINIAUDIO_CAPTURE
-    if (state == AUDIO_RECORDING && audio_record != NULL &&
-        recording_file != NULL) {
-        jclass cls = (*env)->GetObjectClass(env, audio_record);
-        jmethodID read = (*env)->GetMethodID(env, cls, "read", "([SIII)I");
-        if (clear_exception(env, "AudioRecord.read") || read == NULL) {
-            (*env)->DeleteLocalRef(env, cls);
-            set_status("Could not read microphone audio");
-            return;
-        }
-        jint count = (*env)->CallIntMethod(env, audio_record, read,
-                                           sample_array, 0,
-                                           RECORD_BUFFER_SAMPLES, 1);
-        int read_failed = clear_exception(env, "read microphone audio");
-        (*env)->DeleteLocalRef(env, cls);
-        if (read_failed || count < 0) {
-            set_status("Microphone read failed; tap Stop to save");
-            return;
-        }
-        if (count > 0) {
-            jshort samples[RECORD_BUFFER_SAMPLES];
-            (*env)->GetShortArrayRegion(env, sample_array, 0, count, samples);
-            if (clear_exception(env, "copy microphone audio") ||
-                fwrite(samples, sizeof(samples[0]), (size_t)count,
-                       recording_file) != (size_t)count) {
-                set_status("Could not write recording; tap Stop to save");
-                return;
-            }
-            recording_samples_written += count;
+    if (state == AUDIO_RECORDING) {
+        const char *error;
+        audio_capture_tick(env);
+        error = audio_capture_last_error();
+        if (error != NULL) {
+            set_status(error);
         }
     }
-#else
-    (void)env;
-#endif
     if (state == AUDIO_PLAYING && audio_track != NULL &&
                playback_file != NULL) {
         jint head = (*env)->CallIntMethod(env, audio_track,
@@ -596,7 +313,7 @@ void audio_tick(JNIEnv *env)
             set_status("Could not read playback position");
             return;
         }
-        playback_position_samples = (uint32_t)head;
+        playback_position_samples = (int64_t)head;
         if (playback_position_samples > playback_duration_samples) {
             playback_position_samples = playback_duration_samples;
         }
@@ -653,7 +370,7 @@ void audio_tick(JNIEnv *env)
         }
 
         if (playback_eof && playback_sample_offset == playback_sample_count) {
-            if ((uint32_t)head >= (uint32_t)playback_samples_written) {
+            if (head >= 0 && (int64_t)head >= playback_samples_written) {
                 __android_log_print(ANDROID_LOG_INFO, LOG_TAG,
                                     "Playback reached end of stream");
                 playback_position_samples = playback_duration_samples;
@@ -705,41 +422,9 @@ int audio_stop_recording(JNIEnv *env)
         return 0;
     }
 
-    int capture_ok = 1;
-#if NULLNOISE_MINIAUDIO_CAPTURE
-    uint64_t captured_samples = 0;
+    int used_ns = audio_capture_uses_noise_suppressor();
     uint64_t capture_overruns = 0;
-    capture_ok = audio_capture_stop(env, &captured_samples, &capture_overruns);
-    recording_samples_written = (int64_t)captured_samples;
-    (void)env;
-#else
-    if (audio_record_started && audio_record != NULL) {
-        jclass cls = (*env)->GetObjectClass(env, audio_record);
-        jmethodID stop = (*env)->GetMethodID(env, cls, "stop", "()V");
-        if (!clear_exception(env, "AudioRecord.stop") && stop != NULL) {
-            (*env)->CallVoidMethod(env, audio_record, stop);
-            clear_exception(env, "stop recording");
-        }
-        (*env)->DeleteLocalRef(env, cls);
-    }
-    audio_record_started = 0;
-
-    release_noise_suppressor(env);
-    if (audio_record != NULL) {
-        jclass cls = (*env)->GetObjectClass(env, audio_record);
-        jmethodID release = (*env)->GetMethodID(env, cls, "release", "()V");
-        if (!clear_exception(env, "AudioRecord.release") && release != NULL) {
-            (*env)->CallVoidMethod(env, audio_record, release);
-            clear_exception(env, "release recorder");
-        }
-        (*env)->DeleteLocalRef(env, cls);
-        release_global(env, &audio_record);
-    }
-    if (sample_array != NULL) {
-        (*env)->DeleteLocalRef(env, sample_array);
-        sample_array = NULL;
-    }
-#endif
+    int capture_ok = audio_capture_stop(env, NULL, &capture_overruns);
 
     int saved = capture_ok && recording_file != NULL &&
                 fflush(recording_file) == 0 &&
@@ -761,17 +446,14 @@ int audio_stop_recording(JNIEnv *env)
     }
 
     state = AUDIO_IDLE;
-    recording_uses_noise_suppressor =
-        recording_uses_noise_suppressor && saved;
+    used_ns = used_ns && saved;
     if (!saved) {
         unlink(recording_path);
-#if NULLNOISE_MINIAUDIO_CAPTURE
         set_status(capture_overruns > 0
                        ? "Capture buffer overflow; recording discarded"
-                       : "Miniaudio capture failed; recording discarded");
-#else
-        set_status("Recording could not be saved");
-#endif
+                       : !capture_ok
+                           ? "Capture failed; recording discarded"
+                           : "Recording could not be saved");
         return 0;
     }
 
@@ -781,10 +463,9 @@ int audio_stop_recording(JNIEnv *env)
     snprintf(playback_name, sizeof(playback_name), "%s", recording_name);
     playback_position_samples = 0;
     playback_duration_samples = samples;
-    set_status(recording_uses_noise_suppressor
-                   ? "Saved with Android noise suppression"
-                   : "Saved; applying RNNoise");
-    if (!recording_uses_noise_suppressor) {
+    set_status(used_ns ? "Saved with Android noise suppression"
+                       : "Saved; applying RNNoise");
+    if (!used_ns) {
         return audio_enhance_latest();
     }
     return 1;
@@ -1017,8 +698,8 @@ static void *enhancement_worker(void *unused)
     if (ok) {
         snprintf(playback_path, sizeof(playback_path), "%s", enhanced_path);
         snprintf(playback_name, sizeof(playback_name), "%s", enhanced_name);
-        snprintf(enhancement_status, sizeof(enhancement_status), "Saved %s",
-                 enhanced_name);
+        snprintf(enhancement_status, sizeof(enhancement_status), "Saved %.*s",
+                 (int)sizeof(enhancement_status) - 7, enhanced_name);
     } else {
         snprintf(enhancement_status, sizeof(enhancement_status), "RNNoise enhancement failed");
     }

@@ -28,7 +28,7 @@ trap 'rm -f "$test_binary" "$queue_test_binary"' EXIT
 
 # Portable audio core host test: WAV + RNNoise normalization (src/portable_core.c).
 portable_test_dir=$(mktemp -d "${TMPDIR:-/tmp}/nullnoise-portable-test.XXXXXX")
-trap 'rm -rf "$portable_test_dir"' EXIT
+trap 'rm -f "$test_binary" "$queue_test_binary"; rm -rf "$portable_test_dir"' EXIT
 
 model_hash=$(cat third_party/rnnoise/model_version)
 model_c="$portable_test_dir/rnnoise_data.c"
@@ -67,6 +67,22 @@ fi
     "$model_c" \
     -pthread -ldl -lm -o "$portable_test_dir/portable_test"
 "$portable_test_dir/portable_test"
+
+# Host-compile the Android-facing engine in both capture configurations.
+# The stub headers under tests/host_stubs provide declarations only; they catch
+# syntax/type errors and #if-branch drift before the NDK build in CI.
+for capture_mode in 0 1; do
+    "$compiler" -std=c11 -Wall -Wextra -Werror -c \
+        -Itests/host_stubs -Isrc -Ithird_party/rnnoise/include \
+        -Ithird_party/rnnoise/src \
+        -DNULLNOISE_MINIAUDIO_CAPTURE="$capture_mode" \
+        src/audio.c -o "$portable_test_dir/audio-$capture_mode.o"
+    "$compiler" -std=c11 -Wall -Wextra -Werror -c \
+        -Itests/host_stubs -Isrc -Ithird_party/raylib/src/external \
+        -DNULLNOISE_MINIAUDIO_CAPTURE="$capture_mode" \
+        src/audio_capture.c -o "$portable_test_dir/capture-$capture_mode.o"
+done
+echo "Host compile checks passed for both capture backends."
 
 git diff --check HEAD
 echo "Local build-independent checks passed."

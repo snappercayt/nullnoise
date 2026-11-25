@@ -95,8 +95,10 @@ bash scripts/test-local.sh
 ```
 
 These checks cover smoke-test shell syntax, permission-dialog XML selection,
-the portable WAV-header writer, and miniaudio PCM-ring wraparound/full/empty
-behavior. They do not build an APK or require Android SDK/NDK tools.
+the portable WAV-header writer, miniaudio PCM-ring wraparound/full/empty
+behavior, and host compilation of `audio.c` plus both capture backends with
+`-Werror` (`tests/host_stubs` supplies declarations only). They do not build
+an APK or require Android SDK/NDK tools.
 
 GitHub Actions builds and verifies the APK on pushes to `main` and pull
 requests. To run the end-to-end smoke test manually, select **Actions →
