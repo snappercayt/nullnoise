@@ -134,8 +134,11 @@ fi
 files=/data/user/0/$package/files
 recording_started_ns=
 for _ in $(seq 1 20); do
-    if adb shell "ls '$files'/*_NS.wav '$files'/*_RAW.wav 2>/dev/null" |
-        grep -q .; then
+    existing=$(
+        adb shell "ls '$files'/*_NS.wav '$files'/*_RAW.wav 2>/dev/null" ||
+            true
+    )
+    if [[ -n $existing ]]; then
         recording_started_ns=$(date +%s%N)
         break
     fi
