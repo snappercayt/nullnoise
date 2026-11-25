@@ -2,11 +2,13 @@
 
 NullNoise is an Android voice-recording app built with C and the Android NDK. It lets you record audio, save clips locally, and apply a one-tap noise-reduction and voice-enhancement pass.
 
-> **Prototype:** On one phone, a user reported successful recording and voice
-> enhancement, but playback crashed after a few seconds. The full recording,
-> enhancement, and playback flow passed on an Android 15 emulator; playback on
-> that physical phone remains unresolved. Do not rely on NullNoise for
-> important recordings.
+> **Welcome to the NullNoise v0.1.6 beta!** [Download the APK](https://github.com/snappercayt/nullnoise/releases/download/v0.1.6/NullNoise-v0.1.6.apk)
+> or read the [beta release notes](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.6).
+> Early physical-device testing reports that the original recording retains
+> ambient sounds naturally and the enhanced voice is clear. **Known beta issue:**
+> enhancement may cut off word endings. Your original clip is kept unchanged;
+> compare both versions and share feedback before relying on the enhanced clip.
+> This is a debug-signed prototype, not for important recordings.
 
 ## Project goals
 
@@ -28,10 +30,10 @@ The original recording should remain unchanged when an enhanced copy is created.
 
 - Request microphone access when recording is first started and begin recording
   immediately after the user grants it.
-- Record mono 48 kHz PCM audio and save it in the app's private storage.
-- Attach Android `NoiseSuppressor` when the device reports it available.
-- Run RNNoise automatically after recording when Android noise suppression
-  cannot be used.
+- Capture mono 48 kHz PCM through miniaudio's Android voice-recognition input
+  preset and save it in the app's private storage.
+- Preserve the original recording and automatically create an enhanced copy
+  with RNNoise after recording.
 - Run RNNoise on demand with **NullNoise**, producing a separate normalized
   `_NN.wav` file while preserving the source clip.
 - Play, pause, and switch between the original and enhanced versions.
@@ -45,19 +47,18 @@ The original recording should remain unchanged when an enhanced copy is created.
 NullNoise is an Android NativeActivity written in C. It uses
 [raylib](https://github.com/raysan5/raylib) for rendering and touch input, and
 [rawdrawandroid](https://github.com/cnlohr/rawdrawandroid) for NativeActivity
-glue and APK packaging. Audio capture and playback use Android's native audio
-APIs; enhancement uses Android `NoiseSuppressor` when available and RNNoise
-otherwise. The app targets Android API 35 and compiles native code against API
-30.
+glue and APK packaging. The v0.1.6 beta uses miniaudio for microphone capture
+with Android's voice-recognition input preset, Android `AudioTrack` for
+playback, and RNNoise for enhancement. It does not attach the separate Android
+`NoiseSuppressor` effect. The app targets Android API 35 and compiles native
+code against API 30.
 
 The custom raylib canvas does not currently expose semantic controls to
 TalkBack; full screen-reader support needs native accessibility integration.
 
-If Android noise suppression cannot be attached to the microphone session,
-recording is saved with the `_RAW.wav` suffix and RNNoise runs after stop.
-Otherwise, recordings use `_NS.wav`. Tapping **NullNoise** creates a paired
-`_NN.wav` file. Files remain in the app's internal files directory and are not
-exported automatically.
+Beta recordings use the `_RAW.wav` suffix, and RNNoise creates a paired
+`_NN.wav` file after recording stops. Files remain in the app's internal files
+directory and are not exported automatically.
 
 ## Privacy
 
@@ -65,10 +66,13 @@ Recordings are intended to stay on-device. Do not add network upload or analytic
 
 ## Repository status
 
-NullNoise is a prototype with a single-screen record, playback, and
-enhancement flow. The end-to-end flow passes on an Android 15 emulator.
-Playback previously crashed on one physical phone and remains unverified on
-that device; do not rely on NullNoise for important recordings.
+NullNoise v0.1.6 is an early beta with a single-screen record, playback, and
+enhancement flow. Recording, enhancement, playback, and sample continuity pass
+the Android 15 emulator checks. Early physical-device feedback reports that
+original recordings sound natural and enhanced speech is clear, but some word
+endings may be cut off. Keep the original recording and review both versions.
+This branch adds a unified capture API and host compile checks; it still needs
+an Android emulator run before being published as a release.
 
 ### Releases
 
@@ -76,7 +80,37 @@ Browse the [NullNoise GitHub Releases](https://github.com/snappercayt/nullnoise/
 page for published APKs and release notes. New releases appear there
 automatically. For non-release builds, see the [Android workflow runs](https://github.com/snappercayt/nullnoise/actions/workflows/android.yml);
 their APK artifacts are temporary and are not published releases. APKs are
-debug-signed prototypes, not production builds.
+debug-signed beta prototypes, not production builds. The current beta is
+[v0.1.6](https://github.com/snappercayt/nullnoise/releases/tag/v0.1.6).
+
+## Roadmap
+
+Planned improvements, ordered by impact. The full review input is in
+`docs/development/ARCHITECTURE-REVIEW.md`.
+
+Completed:
+
+- **Host-test the audio engine.** WAV + RNNoise normalization live in a
+  portable core with a host unit, and `scripts/test-local.sh` now compiles
+  `audio.c` and `audio_capture.c` with `-Werror` in both backend configurations.
+- **Replace the `#if` capture duality.** `audio.c` calls one `audio_capture`
+  API; the `AudioRecord` and miniaudio implementations are thin backends in
+  `audio_capture.c`. Only `src/miniaudio_impl.c` is conditional in the Makefile.
+- **Fix the head-position cast.** Playback head position is compared in 64-bit
+  instead of being truncated to `uint32_t`.
+
+Remaining:
+
+1. **Shrink the native library for a 1 GB RAM device.** Add
+   `-ffunction-sections -fdata-sections -Wl,--gc-sections` to `LDFLAGS`
+   so unreferenced miniaudio/raylib backends are dropped.
+2. **Tune capture and playback buffers.** `CAPTURE_BUFFER_FRAMES` (~384 KB) and
+   the `AudioTrack` stream buffer are fixed magic numbers. Make them named and
+   device-aware.
+3. **Temp file + rename for enhanced output.** Replace the in-place seek
+   rewrite so a partial `_NN.wav` is never surfaced as complete.
+4. **Revisit the 390 px UI scaling target.** Confirm the phone-oriented base
+   width is deliberate, or move to a responsive layout.
 
 ## Contributing and project policies
 

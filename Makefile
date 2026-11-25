@@ -6,6 +6,7 @@ PACKAGENAME := com.snappercayt.nullnoise
 RAWDRAWANDROID := third_party/rawdrawandroid
 RAYLIB := third_party/raylib
 BUILD_DIR := build
+MINIAUDIO_CAPTURE ?= 0
 RNNOISE := third_party/rnnoise
 RNNOISE_MODEL_HASH := $(shell cat $(RNNOISE)/model_version)
 RNNOISE_MODEL_ARCHIVE := $(BUILD_DIR)/rnnoise_data-$(RNNOISE_MODEL_HASH).tar.gz
@@ -26,13 +27,17 @@ RAYLIB_SOURCES := \
 	$(RAYLIB)/src/rshapes.c \
 	$(RAYLIB)/src/rtextures.c \
 	$(RAYLIB)/src/rtext.c
-SRC := src/main.c src/audio.c src/wav.c $(RAYLIB_SOURCES) \
-	$(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
+SRC := src/main.c src/audio.c src/audio_capture.c src/wav.c src/portable_core.c \
+	$(RAYLIB_SOURCES) $(RNNOISE_SOURCES) $(RNNOISE_MODEL_C)
+ifeq ($(MINIAUDIO_CAPTURE),1)
+SRC += src/miniaudio_impl.c
+endif
 CFLAGS += -pthread \
 	-DPLATFORM_ANDROID \
 	-DGRAPHICS_API_OPENGL_ES2 \
 	-DSUPPORT_MODULE_RAUDIO=0 \
 	-DSUPPORT_MODULE_RMODELS=0 \
+	-DNULLNOISE_MINIAUDIO_CAPTURE=$(MINIAUDIO_CAPTURE) \
 	-I$(RAYLIB)/src \
 	-I$(RNNOISE)/include \
 	-I$(RNNOISE)/src \

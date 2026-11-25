@@ -59,6 +59,32 @@ Local builds target `arm64-v8a`; GitHub Actions also builds `x86_64` for
 emulator testing. Android SDK/NDK tools are not vendored, and local APK builds
 are optional.
 
+To exercise the experimental build on the Android 15 emulator, run
+**Actions → Android APK → Run workflow**, enable **miniaudio_capture**, and
+leave `release_tag` blank. To publish the opt-in miniaudio build as a prototype,
+enter a new version tag only after deciding to publish; the workflow publishes
+only after the APK build and emulator smoke test pass.
+
+## Experimental miniaudio capture
+
+The default build retains the existing `AudioRecord` capture path and its
+Android `NoiseSuppressor` session effect. To build the experimental miniaudio
+capture path, run:
+
+```sh
+make -B MINIAUDIO_CAPTURE=1
+```
+
+This uses miniaudio's Android voice-recognition input preset, a bounded PCM
+ring buffer, and a writer thread. That preset is not equivalent to attaching
+Android's explicit `NoiseSuppressor` effect. The miniaudio path uses the `_RAW`
+filename and applies RNNoise after recording; vendor processing associated
+with the input preset may still occur. The build is intended for
+capture-continuity and device-quality comparison. It remains experimental;
+prototype release notes identify its preset and the lack of physical-device
+audio validation. Use `make -B` when switching back to the default build
+because Make does not track compiler-flag changes.
+
 ## Tests and CI
 
 Run the build-independent checks before using Actions minutes for an Android
@@ -69,23 +95,31 @@ bash scripts/test-local.sh
 ```
 
 These checks cover smoke-test shell syntax, permission-dialog XML selection,
-and the portable WAV-header writer. They do not build an APK or require
-Android SDK/NDK tools.
+the portable WAV-header writer, miniaudio PCM-ring wraparound/full/empty
+behavior, and host compilation of `audio.c` plus both capture backends with
+`-Werror` (`tests/host_stubs` supplies declarations only). They do not build
+an APK or require Android SDK/NDK tools.
 
 GitHub Actions builds and verifies the APK on pushes to `main` and pull
 requests. To run the end-to-end smoke test manually, select **Actions →
 Android APK → Run workflow**. The Android 15 emulator test clears app data,
 exercises microphone permission, records and validates a WAV, waits for
 enhancement, then plays both enhanced and original audio through `AudioTrack`.
-A passing emulator run does not replace physical-device testing.
+It checks recording sample count against elapsed capture time and verifies that
+enhancement preserves sample count. Experimental miniaudio runs also fail on
+reported capture, ring-buffer, or writer errors. A passing emulator run does
+not replace physical-device testing.
 
 ## Publishing a prototype release
 
 In **Actions → Android APK → Run workflow**, enter a new version (for example,
-`v0.1.5`) in `release_tag`. Leave `diagnostic_package` disabled for the regular
-app. The workflow publishes the pre-release only after the APK build and
-emulator smoke test pass. Enable `diagnostic_package` only when you want the
-side-by-side diagnostic edition, which has a separate app ID and storage.
+`v0.1.6`) in `release_tag`. Leave `diagnostic_package` disabled for the regular
+app. To publish the miniaudio capture build, also enable `miniaudio_capture`;
+the release notes identify the experimental input preset and note that
+real-device audio quality has not been validated. The workflow publishes the
+pre-release only after the APK build and emulator smoke test pass. Enable
+`diagnostic_package` only when you want the side-by-side diagnostic edition,
+which has a separate app ID and storage.
 
 Published APKs are debug-signed prototypes, not production release builds.
 They are listed on the [GitHub Releases page](https://github.com/snappercayt/nullnoise/releases).

@@ -103,17 +103,25 @@ assert_app_running() {
 
 tap_button 0
 permission_button_tapped=0
-for _ in $(seq 1 45); do
-    adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
-    hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
-    coordinates=$(python3 scripts/permission_dialog.py <<<"$hierarchy") || true
-    if [[ -n $coordinates ]]; then
-        read -r x y <<<"$coordinates"
-        adb shell input tap "$x" "$y"
-        permission_button_tapped=1
-        break
+# The Record tap can land before the raylib UI is ready on a cold boot. If the
+# permission dialog does not appear, tap Record again before giving up.
+for attempt in 1 2 3; do
+    for _ in $(seq 1 15); do
+        adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
+        hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
+        coordinates=$(python3 scripts/permission_dialog.py <<<"$hierarchy") || true
+        if [[ -n $coordinates ]]; then
+            read -r x y <<<"$coordinates"
+            adb shell input tap "$x" "$y"
+            permission_button_tapped=1
+            break 2
+        fi
+        sleep 1
+    done
+    if [[ $attempt -lt 3 ]]; then
+        echo "Permission dialog not shown; tapping Record again" >&2
+        tap_button 0
     fi
-    sleep 1
 done
 if [[ $permission_button_tapped -ne 1 ]]; then
     echo "Last accessibility hierarchy: $hierarchy" >&2
@@ -121,11 +129,31 @@ if [[ $permission_button_tapped -ne 1 ]]; then
 fi
 
 # Granting permission should return to the app and start the requested capture.
+# Start the clock when the app actually creates its WAV: the permission
+# callback can take ~1 s on slower emulators, which is not capture time.
+files=/data/user/0/$package/files
+recording_started_ns=
+for _ in $(seq 1 20); do
+    existing=$(
+        adb shell "ls '$files'/*_NS.wav '$files'/*_RAW.wav 2>/dev/null" ||
+            true
+    )
+    if [[ -n $existing ]]; then
+        recording_started_ns=$(date +%s%N)
+        break
+    fi
+    assert_app_running "permission result and recording start"
+    sleep 1
+done
+if [[ -z $recording_started_ns ]]; then
+    fail_test "Recording did not start after microphone permission was granted"
+fi
 sleep 3
 assert_app_running "permission result and recording"
 tap_button 0
+recording_stopped_ns=$(date +%s%N)
+recording_elapsed_ms=$(((recording_stopped_ns - recording_started_ns) / 1000000))
 
-files=/data/user/0/$package/files
 source_file=
 for _ in $(seq 1 30); do
     source_file=$(
@@ -199,6 +227,33 @@ PY
 source_samples=$(validate_wav "$source_file" 48000) ||
     fail_test "Saved recording is not a finalized WAV with at least one second of audio"
 echo "Validated saved recording: $source_file ($source_samples samples)"
+if ! python3 - "$source_samples" "$recording_elapsed_ms" <<'PY'
+import sys
+
+samples, elapsed_ms = map(int, sys.argv[1:])
+expected = elapsed_ms * 48
+tolerance = max(expected // 5, 4800)
+if abs(samples - expected) > tolerance:
+    raise SystemExit(
+        f"Captured {samples} samples in {elapsed_ms} ms; "
+        f"expected about {expected} (tolerance {tolerance})"
+    )
+print(f"Capture duration matches sample count: {samples} samples / {elapsed_ms} ms")
+PY
+then
+    fail_test "Recorded sample count did not match elapsed capture time"
+fi
+
+if [[ ${MINIAUDIO_CAPTURE:-0} == 1 ]]; then
+    capture_errors=$(
+        adb logcat -d -v brief -s NullNoise:E |
+            grep -E 'Miniaudio (capture|PCM queue|writer)' || true
+    )
+    if [[ -n $capture_errors ]]; then
+        printf '%s\n' "$capture_errors" >&2
+        fail_test "Miniaudio reported capture, queue, or writer errors"
+    fi
+fi
 
 # RNNoise may start automatically after recording. If Android noise suppression
 # was used, start enhancement explicitly; otherwise give automatic processing
