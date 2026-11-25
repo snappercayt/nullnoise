@@ -103,17 +103,25 @@ assert_app_running() {
 
 tap_button 0
 permission_button_tapped=0
-for _ in $(seq 1 45); do
-    adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
-    hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
-    coordinates=$(python3 scripts/permission_dialog.py <<<"$hierarchy") || true
-    if [[ -n $coordinates ]]; then
-        read -r x y <<<"$coordinates"
-        adb shell input tap "$x" "$y"
-        permission_button_tapped=1
-        break
+# The Record tap can land before the raylib UI is ready on a cold boot. If the
+# permission dialog does not appear, tap Record again before giving up.
+for attempt in 1 2 3; do
+    for _ in $(seq 1 15); do
+        adb shell uiautomator dump /sdcard/nullnoise-window.xml >/dev/null 2>&1 || true
+        hierarchy=$(adb exec-out cat /sdcard/nullnoise-window.xml 2>/dev/null || true)
+        coordinates=$(python3 scripts/permission_dialog.py <<<"$hierarchy") || true
+        if [[ -n $coordinates ]]; then
+            read -r x y <<<"$coordinates"
+            adb shell input tap "$x" "$y"
+            permission_button_tapped=1
+            break 2
+        fi
+        sleep 1
+    done
+    if [[ $attempt -lt 3 ]]; then
+        echo "Permission dialog not shown; tapping Record again" >&2
+        tap_button 0
     fi
-    sleep 1
 done
 if [[ $permission_button_tapped -ne 1 ]]; then
     echo "Last accessibility hierarchy: $hierarchy" >&2
