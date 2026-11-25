@@ -121,14 +121,28 @@ if [[ $permission_button_tapped -ne 1 ]]; then
 fi
 
 # Granting permission should return to the app and start the requested capture.
-recording_started_ns=$(date +%s%N)
+# Start the clock when the app actually creates its WAV: the permission
+# callback can take ~1 s on slower emulators, which is not capture time.
+files=/data/user/0/$package/files
+recording_started_ns=
+for _ in $(seq 1 20); do
+    if adb shell "ls '$files'/*_NS.wav '$files'/*_RAW.wav 2>/dev/null" |
+        grep -q .; then
+        recording_started_ns=$(date +%s%N)
+        break
+    fi
+    assert_app_running "permission result and recording start"
+    sleep 1
+done
+if [[ -z $recording_started_ns ]]; then
+    fail_test "Recording did not start after microphone permission was granted"
+fi
 sleep 3
 assert_app_running "permission result and recording"
 tap_button 0
 recording_stopped_ns=$(date +%s%N)
 recording_elapsed_ms=$(((recording_stopped_ns - recording_started_ns) / 1000000))
 
-files=/data/user/0/$package/files
 source_file=
 for _ in $(seq 1 30); do
     source_file=$(
